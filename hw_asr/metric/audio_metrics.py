@@ -19,7 +19,7 @@ class PESQ_Metric(BaseMetric):
 
     def __call__(self, preds, target, **batch):
         val = perceptual_evaluation_speech_quality(
-            preds, target, fs=16_000, mode="wb"
+            preds, target, fs=16_000, mode="wb", n_processes=4
             ).mean()
         return val
 
