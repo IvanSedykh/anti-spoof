@@ -1,4 +1,5 @@
 import sys
+import torch
 from torch import nn
 from torch.nn import Sequential
 
@@ -6,23 +7,14 @@ from hw_asr.base import BaseModel
 
 
 class BaselineModel(BaseModel):
-    def __init__(self, n_feats, n_class, fc_hidden=512, **batch):
-        super().__init__(n_feats, n_class, **batch)
-        self.net = Sequential(
-            # people say it can aproximate any function...
-            nn.Linear(in_features=n_feats, out_features=fc_hidden),
-            nn.ReLU(),
-            nn.Linear(in_features=fc_hidden, out_features=fc_hidden),
-            nn.ReLU(),
-            nn.Linear(in_features=fc_hidden, out_features=n_class)
-        )
+    def __init__(self, **batch):
+        super().__init__(**batch)
+        # heh
+        self.scale = nn.Parameter(torch.tensor([1.0], requires_grad=True))
+        self.bias = nn.Parameter(torch.tensor([0.0], requires_grad=True))
 
-    def forward(self, spectrogram, **batch):
-        # print(f"{spectrogram.shape=}")
-        output = {"logits": self.net(spectrogram.transpose(1, 2))}
-        # print(f"{output['logits'].shape=}")
-        # sys.exit(0)
+    def forward(self, **batch):
+        mix_wav = batch['mix_wav']
+        pred = self.scale * mix_wav + self.bias
+        output = {"predict_wav": pred}
         return output
-
-    def transform_input_lengths(self, input_lengths):
-        return input_lengths  # we don't reduce time dimension here

@@ -1,18 +1,49 @@
 from operator import xor
 
-from torch.utils.data import ConcatDataset, DataLoader
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
 import hw_asr.augmentations
 import hw_asr.datasets
 from hw_asr import batch_sampler as batch_sampler_module
-from hw_asr.base.base_text_encoder import BaseTextEncoder
 from hw_asr.collate_fn.collate import collate_fn
 from hw_asr.utils.parse_config import ConfigParser
 import hw_asr.metric as module_metric
 
 
+def get_datasets(configs: ConfigParser) -> dict[str, Dataset]:
+    datasets_dict = {}
+    for split, params in configs["data"].items():
+        num_workers = params.get("num_workers", 1)
+
+        # set train augmentations
+        if split == "train":
+            wave_augs, spec_augs = hw_asr.augmentations.from_configs(configs)
+            drop_last = True
+        else:
+            wave_augs, spec_augs = None, None
+            drop_last = False
+
+        # create and join datasets
+        datasets = []
+        for ds in params["datasets"]:
+            datasets.append(
+                configs.init_obj(
+                    ds,
+                    hw_asr.datasets,
+                    config_parser=configs,
+                    wave_augs=wave_augs,
+                )
+            )
+        assert len(datasets)
+        if len(datasets) > 1:
+            dataset = ConcatDataset(datasets)
+        else:
+            dataset = datasets[0]
+        datasets_dict[split] = dataset
+    return datasets_dict
+
 def get_dataloaders(
-    configs: ConfigParser, text_encoder: BaseTextEncoder
+    configs: ConfigParser
 ) -> dict[str, DataLoader]:
     dataloaders = {}
     for split, params in configs["data"].items():
@@ -33,7 +64,6 @@ def get_dataloaders(
                 configs.init_obj(
                     ds,
                     hw_asr.datasets,
-                    text_encoder=text_encoder,
                     config_parser=configs,
                     wave_augs=wave_augs,
                     spec_augs=spec_augs,
@@ -80,23 +110,28 @@ def get_dataloaders(
     return dataloaders
 
 
-def get_metrics(config, text_encoder):
+def get_metrics(config: ConfigParser) -> dict[str, list]:
     common_metrics = [
-        config.init_obj(metric_dict, module_metric, text_encoder=text_encoder)
+        config.init_obj(metric_dict, module_metric)
         for metric_dict in config["metrics"].get("all", [])
     ]
-    evalutation_metrics = [
-        config.init_obj(metric_dict, module_metric, text_encoder=text_encoder)
-        for metric_dict in config["metrics"].get("evaluation_metrics", [])
-    ]
-    train_metrics = [
-        config.init_obj(metric_dict, module_metric, text_encoder=text_encoder)
-        for metric_dict in config["metrics"].get("train_metrics", [])
-    ]
+    # ignore other metrics
+    return common_metrics
 
-    metrics = {
-        "train_metrics": common_metrics + train_metrics,
-        "evaluation_metrics": common_metrics + evalutation_metrics,
-    }
 
-    return metrics
+# def get_metrics(config, text_encoder):
+#     evalutation_metrics = [
+#         config.init_obj(metric_dict, module_metric, text_encoder=text_encoder)
+#         for metric_dict in config["metrics"].get("evaluation_metrics", [])
+#     ]
+#     train_metrics = [
+#         config.init_obj(metric_dict, module_metric, text_encoder=text_encoder)
+#         for metric_dict in config["metrics"].get("train_metrics", [])
+#     ]
+
+#     metrics = {
+#         "train_metrics": common_metrics + train_metrics,
+#         "evaluation_metrics": common_metrics + evalutation_metrics,
+#     }
+
+#     return metrics

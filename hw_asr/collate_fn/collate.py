@@ -14,46 +14,27 @@ def collate_fn(dataset_items: List[dict]):
     result_batch = {}
     # TODO: your code here
 
-    # base dataset returns this
-    #     return {
-    #     "audio": audio_wave,
-    #     "spectrogram": audio_spec,
-    #     "duration": audio_wave.size(1) / self.config_parser["preprocessing"]["sr"],
-    #     "text": data_dict["text"],
-    #     "text_encoded": self.text_encoder.encode(data_dict["text"]),
-    #     "audio_path": audio_path,
-    # }
+    # stack torch tensors, collect strings to list
+    # and pad them to the same length
 
-    # SPECTROGRAMS
-    spectrograms = [torch.squeeze(item['spectrogram'], dim=0).T for item in dataset_items]
-    spectrograms_lens = [item['spectrogram'].shape[2] for item in dataset_items]
-    spectrograms = torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True)
-    spectrograms = spectrograms.permute(0, 2, 1)
-    result_batch['spectrogram'] = spectrograms
-    result_batch['spectrogram_length'] = torch.tensor(spectrograms_lens)
+    result_batch["mix_wav"] = torch.stack(
+        [torch.squeeze(item["mix_wav"]) for item in dataset_items]
+    )
 
-    # TEXTS ENCCODING
-    # actually this is text char tokens
-    texts_encoded = [torch.squeeze(item['text_encoded'], dim=0) for item in dataset_items]
-    texts_encoded_lens = [item['text_encoded'].shape[1] for item in dataset_items]
-    texts_encoded = torch.nn.utils.rnn.pad_sequence(texts_encoded, batch_first=True)
-    result_batch['text_encoded'] = texts_encoded
-    result_batch['text_encoded_length'] = torch.tensor(texts_encoded_lens)
+    # use padding for ref wav
+    result_batch["ref_wav"] = torch.nn.utils.rnn.pad_sequence(
+        [torch.squeeze(item["ref_wav"]) for item in dataset_items], batch_first=True
+    )
+    result_batch["ref_wav_len"] = torch.tensor(
+        [item["ref_wav_len"] for item in dataset_items]
+    )
 
-    # TEXTS
-    texts = [item['text'] for item in dataset_items]
-    result_batch['text'] = texts
+    result_batch["target_wav"] = torch.stack(
+        [torch.squeeze(item["target_wav"]) for item in dataset_items]
+    )
 
-    # AUDIO PATHS
-    audio_paths = [item['audio_path'] for item in dataset_items]
-    result_batch['audio_path'] = audio_paths
-
-    audios = [item['audio'] for item in dataset_items]
-    result_batch['audio'] = audios
-
-    durations = [item['duration'] for item in dataset_items]
-    result_batch['duration'] = durations
-
-    # TODO: may add other keys
+    result_batch["speaker_id"] = torch.tensor(
+        [item["speaker_id"] for item in dataset_items]
+    )
 
     return result_batch

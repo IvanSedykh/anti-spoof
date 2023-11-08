@@ -1,3 +1,4 @@
+*.ipynb
 .DS_Store
 default_test_model
 tmp
