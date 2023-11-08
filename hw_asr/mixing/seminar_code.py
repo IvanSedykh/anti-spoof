@@ -16,7 +16,6 @@ from torchmetrics.audio import (
     SignalDistortionRatio,
     ScaleInvariantSignalDistortionRatio,
 )
-from IPython import display
 
 from concurrent.futures import ProcessPoolExecutor
 
