@@ -1,25 +1,7 @@
-# ASR project barebones
+# Source Separation
 
-## TL;DR
-Final scores are:
 
-### test-other
-```
-WER (ARGMAX): 31.91%
-WER (BS): 31.62%
-WER (BS + LM): 24.69%
-```
-
-### test-clean
-```
-WER (ARGMAX): 13.20%
-WER (BS): 12.99%
-WER (BS + LM): 9.39%
-```
-
-Note, that we even didn't use train-other.
-
-Check WANDB report [here](https://wandb.ai/idsedykh/asr_project/reports/ASR-Conformer---Vmlldzo1NzM2NDMw?accessToken=8x10ypm1cv3gvk1a404po2265kpmty1r403fc2kideuwq5uyznv2m0r61kkl3xho).
+Check WANDB report [here]().
 
 
 ## Installation guide
@@ -41,11 +23,11 @@ Check WANDB report [here](https://wandb.ai/idsedykh/asr_project/reports/ASR-Conf
 ## Reproduction guide
 
 
-run `python train.py -c hw_asr/configs/conformer_24.json`
+run `python train.py -c hw_asr/configs/`
 
 To compute metrics:
 
-Download the checkpoint, config and lm from [here](https://disk.yandex.ru/d/ZqIdzXFTsDvtEw).
+Download the checkpoint, config [here]().
 
 test-other:
 ```bash

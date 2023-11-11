@@ -23,22 +23,10 @@ echo "MASTER_ADDR="$MASTER_ADDR
 
 # to add conda stuff
 # source /home/${USER}/.bashrc
-conda activate asr_env
+source /home/i.sedyh/miniconda3/bin/activate asr_env
 
-unset TMPDIR 
+unset TMPDIR
 
 srun \
 python train.py \
-    -c hw_asr/configs/conformer_24.json
-#    -c hw_asr/configs/conformer_11.json
-#    -c hw_asr/configs/conformer_10.json
-#    -c hw_asr/configs/conformer_9.json -r saved/models/conformer_v9/1009_175335/model_best.pth
-#    -c hw_asr/configs/conformer_8.json
-#    -c hw_asr/configs/conformer_6.json
-#    -c hw_asr/configs/conformer_5.json
-#    -c hw_asr/configs/conformer_4.json
-#    -c hw_asr/configs/conformer_2.json
-#    -c hw_asr/configs/conformer_3.json
-#    -c hw_asr/configs/conformer_1.json
-#    -c hw_asr/configs/one_batch_conformer.json
-#    -c hw_asr/configs/one_batch_test.json 
+    -c hw_asr/configs/spex_1.json

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 import torch
 from transformers import Trainer, TrainerCallback
@@ -118,16 +119,11 @@ class SourceSeparationTrainer(Trainer):
                     logits = {k: v for k, v in outputs.items() if k not in ignore_keys + ["loss"]}
                 else:
                     logits = outputs
-                # TODO: this needs to be fixed and made cleaner later.
-                if self.args.past_index >= 0:
-                    self._past = outputs[self.args.past_index - 1]
 
         if prediction_loss_only:
             return (loss, None, None)
 
         logits = nested_detach(logits)
-        if len(logits) == 1:
-            logits = logits[0]
 
         return (loss, logits, labels)
 
@@ -141,6 +137,7 @@ class WandbPredictionProgressCallback(WandbCallback):
         print("Init WandbPredictionProgressCallback")
         super().__init__()
         self.trainer = trainer
+        self.num_samples = num_samples
         self.sample_dataset = Subset(val_dataset, indices=range(num_samples))
 
     def on_evaluate(self, args, state, control, **kwargs):
@@ -155,6 +152,11 @@ class WandbPredictionProgressCallback(WandbCallback):
             wandb.Audio(pred, sample_rate=16_000)
             for i, pred in enumerate(predictions)
         ]
+
+        audio_predictions_normalized = [
+            wandb.Audio(self.normalize_audio(pred), sample_rate=16_000)
+            for i, pred in enumerate(predictions)
+        ]
         audio_labels = [
             wandb.Audio(
                 label,
@@ -162,11 +164,24 @@ class WandbPredictionProgressCallback(WandbCallback):
             )
             for i, label in enumerate(labels)
         ]
+        audio_mix = [
+            wandb.Audio(
+                np.array(self.sample_dataset[i]['mix_wav'][0]), sample_rate=16000,
+            )
+            for i in range(self.num_samples)
+        ]
 
-        predictions_df = pd.DataFrame(
-            {"predictions": audio_predictions, "targets": audio_labels}
-        )
+        predictions_df = pd.DataFrame({
+             "mix": audio_mix,
+             "predictions": audio_predictions, 
+             "predictions_norm":audio_predictions_normalized, 
+             "targets": audio_labels
+        })
         predictions_df["epoch"] = state.epoch
         records_table = self._wandb.Table(dataframe=predictions_df)
         #   log the table to wandb
         self._wandb.log({"sample_predictions": records_table})
+
+    @staticmethod
+    def normalize_audio(wav: np.array):
+        return 20 * wav/np.linalg.norm(wav)

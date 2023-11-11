@@ -29,6 +29,7 @@ np.random.seed(SEED)
 load_dotenv()
 
 
+# todo: move to another module
 class MetricsCaller:
     def __init__(self, metrics):
         self.metrics = metrics
@@ -63,6 +64,7 @@ def main(config):
     metrics_computer = MetricsCaller(metrics)
 
 
+    config['trainer_args']['output_dir'] = config._save_dir
     trainer_args = TrainingArguments(**config['trainer_args'])
 
 
