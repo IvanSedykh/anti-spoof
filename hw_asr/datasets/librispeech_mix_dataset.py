@@ -58,3 +58,33 @@ class LibrispeechMixDataset(BaseDataset):
                     assert Path(v).exists(), f"File {v} does not exist"
 
         return index
+
+
+# class for another dir structure, absence of speakers
+class CustomDirTestDataset(LibrispeechMixDataset):
+    def _create_index(self, data_dir: str):
+        index = []
+        dir = Path(data_dir)
+
+        mix_dir = dir / 'mix'
+        for file in mix_dir.glob("*.wav"):
+            # heh
+            ref_path = str(file).replace('/mix/', '/refs/').replace('mixed', 'ref')
+            target_path = str(file).replace('/mix/', '/targets/').replace('mixed', 'target')
+
+            t_info = torchaudio.info(str(file))
+            length = t_info.num_frames / t_info.sample_rate
+            index.append(
+                {
+                    "mix_path": str(file),
+                    "ref_path": ref_path,
+                    "target_path": target_path,
+                    "audio_len": length,
+                }
+            )
+            # check if all files exist
+            for k, v in index[-1].items():
+                if k.endswith("_path"):
+                    assert Path(v).exists(), f"File {v} does not exist"
+
+        return index

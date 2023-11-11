@@ -25,3 +25,5 @@ transformers
 accelerate
 pesq
 soundfile
+safetensors
+

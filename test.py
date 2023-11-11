@@ -7,13 +7,22 @@ import datetime
 import torch
 from tqdm import tqdm
 import numpy as np
+from safetensors import safe_open
+from safetensors.torch import load_file
+from transformers import TrainingArguments, EvalPrediction
+
 
 import hw_asr.model as module_model
-from hw_asr.trainer import Trainer
+from hw_asr.trainer import SourceSeparationTrainer
 from hw_asr.utils import ROOT_PATH
-from hw_asr.utils.object_loading import get_dataloaders
+from hw_asr.utils.object_loading import get_dataloaders, get_datasets, get_metrics
 from hw_asr.utils.parse_config import ConfigParser
 from hw_asr.metric.utils import calc_cer, calc_wer
+from hw_asr.collate_fn.collate import collate_fn
+
+# todo:
+from train import MetricsCaller
+
 
 
 # fix random seeds for reproducibility
@@ -22,7 +31,13 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 DEFAULT_CHECKPOINT_PATH = ROOT_PATH / "default_test_model" / "checkpoint.pth"
-NUM_BEAMS = 30
+
+
+def load_safetensors_dict(path: Path, device):
+    tensors = {}
+    with safe_open(path, framework="pt", device=device) as f:
+        for k in f.keys():
+            tensors[k] = f.get_tensor(k)
 
 
 def calc_mean_metric(gt_list: list[str], pred_list:list[str], metric_func: callable):
@@ -39,94 +54,38 @@ def main(config, out_file):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}")
 
-    # text_encoder
-    text_encoder = config.get_text_encoder()
+    # init metrics
+    metrics = get_metrics(config)
+    metrics_computer = MetricsCaller(metrics)
 
     # setup data_loader instances
     print(f"Loading data...")
-    dataloaders = get_dataloaders(config, text_encoder)
-    print(dataloaders['test'].batch_size)
+    datasets = get_datasets(config)
+    print(datasets['test'])
 
     # build model architecture
     print(f"Building model...")
-    model = config.init_obj(config["arch"], module_model, n_class=len(text_encoder))
+    model = config.init_obj(config["arch"], module_model)
     logger.info(model)
 
-    logger.info("Loading checkpoint: {} ...".format(config.resume))
-    checkpoint = torch.load(config.resume, map_location=device)
-    state_dict = checkpoint["state_dict"]
-    if config["n_gpu"] > 1:
-        model = torch.nn.DataParallel(model)
+    checkpoint_path = config.resume + '/model.safetensors'
+    logger.info("Loading checkpoint: {} ...".format(checkpoint_path))
+    # state_dict = load_safetensors_dict(checkpoint_path, device)
+    state_dict = load_file(checkpoint_path, 'cpu')
     model.load_state_dict(state_dict)
 
-    # prepare model for testing
-    model = model.to(device)
-    model.eval()
+    trainer_args = TrainingArguments(**config['trainer_args'])
+    trainer = SourceSeparationTrainer(
+        model=model,
+        args=trainer_args,
+        data_collator=collate_fn,
+        compute_metrics=metrics_computer
+        )
+    
+    res = trainer.predict(datasets['test'])
 
-    results = []
+    print(res.metrics)
 
-    with torch.no_grad():
-        for batch_num, batch in enumerate(tqdm(dataloaders["test"])):
-            batch = Trainer.move_batch_to_device(batch, device)
-            output = model(**batch)
-            if type(output) is dict:
-                batch.update(output)
-            else:
-                batch["logits"] = output
-
-            # we dont need probs/log probs. logits are ok
-            # batch["log_probs"] = torch.log_softmax(batch["logits"], dim=-1)
-            # batch["probs"] = batch["log_probs"].exp().cpu()
-            # batch["argmax"] = batch["probs"].argmax(-1)
-            batch["log_probs_length"] = model.transform_input_lengths(
-                batch["spectrogram_length"]
-            )
-            batch["argmax"] = batch["logits"].argmax(-1)
-
-            # BATCHED BEAM SEARCH ########
-            pred_bs_lm = text_encoder.batched_ctc_beam_search_lm(batch, NUM_BEAMS)
-            pred_bs = text_encoder.batched_ctc_beam_search(batch, NUM_BEAMS)
-            # ###########
-            for i in range(len(batch["text"])):
-                argmax = batch["argmax"][i]
-                argmax = argmax[: int(batch["log_probs_length"][i])]
-                results.append(
-                    {
-                        "ground_trurh": batch["text"][i],
-                        "pred_text_argmax": text_encoder.ctc_decode(argmax.cpu().numpy()),
-                        # "pred_text_beam_search": text_encoder.ctc_beam_search(
-                        #     batch["logits"][i], batch["log_probs_length"][i], beam_size=NUM_BEAMS
-                        # )[:10],
-                        "pred_text_beam_search": pred_bs[i][:10],
-                        # "pred_text_beam_search_lm": text_encoder.ctc_beam_search_lm(
-                        #     batch["logits"][i], batch["log_probs_length"][i], beam_size=NUM_BEAMS
-                        # )[:10],
-                        "pred_text_beam_search_lm": pred_bs_lm[i][:10]
-                    }
-                )
-    with Path(out_file).open("w") as f:
-        json.dump(results, f, indent=2)
-
-    argmax_wer = calc_mean_metric(
-        [i['ground_trurh'] for i in results],
-        [i['pred_text_argmax'] for i in results],
-        calc_wer
-    )
-    print(f"WER (ARGMAX): {argmax_wer:.2%}")
-
-    bs_wer = calc_mean_metric(
-        [i['ground_trurh'] for i in results],
-        [i['pred_text_beam_search'][0][0] for i in results],
-        calc_wer
-    )
-    print(f"WER (BS): {bs_wer:.2%}")
-
-    bs_lm_wer = calc_mean_metric(
-        [i['ground_trurh'] for i in results],
-        [i['pred_text_beam_search_lm'][0][0] for i in results],
-        calc_wer
-    )
-    print(f"WER (BS + LM): {bs_lm_wer:.2%}")
 
 
 if __name__ == "__main__":
@@ -208,12 +167,9 @@ if __name__ == "__main__":
                 "num_workers": args.jobs,
                 "datasets": [
                     {
-                        "type": "CustomDirAudioDataset",
+                        "type": "CustomDirTestDataset",
                         "args": {
-                            "audio_dir": str(test_data_folder / "audio"),
-                            "transcription_dir": str(
-                                test_data_folder / "transcriptions"
-                            ),
+                            "data_dir": str(test_data_folder)
                         },
                     }
                 ],

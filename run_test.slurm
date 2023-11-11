@@ -23,7 +23,7 @@ echo "MASTER_ADDR="$MASTER_ADDR
 
 # to add conda stuff
 # source /home/${USER}/.bashrc
-conda activate asr_env
+source /home/i.sedyh/miniconda3/bin/activate asr_env
 
 unset TMPDIR 
 
@@ -31,5 +31,5 @@ srun \
 python test.py \
     --batch-size 32 \
     --jobs 8 \
-    -c default_test_model/config-other.json \
-    #-c default_test_model/config-clean.json \
+    -r saved/models/spex/1109_133256/checkpoint-82000 \
+    -c default_test_model/config.json

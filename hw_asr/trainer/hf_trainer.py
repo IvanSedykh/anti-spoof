@@ -21,7 +21,9 @@ class SourceSeparationTrainer(Trainer):
         if hasattr(self, "loss_module"):
             loss = self.loss_module(inputs=inputs, outputs=outputs)
         else:
-            raise ValueError("Trainer: loss module is not set.")
+            loss = torch.tensor(0.0)
+            # todo: think how to skip loss compute, nut compute metrics
+            # raise ValueError("Trainer: loss module is not set.")
 
         return (loss, outputs) if return_outputs else loss
 

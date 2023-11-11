@@ -39,7 +39,7 @@ class BaseDataset(Dataset):
         ref_path = data_dict["ref_path"]
         mix_path = data_dict["mix_path"]
         target_path = data_dict["target_path"]
-        speaker_id = data_dict.get("speaker_id", -1)
+        speaker_id = data_dict.get("speaker_id", -100)
         speaker_id = torch.tensor(speaker_id, dtype=torch.long)
 
         ref_wave = self.load_audio(ref_path)
