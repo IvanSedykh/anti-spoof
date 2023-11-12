@@ -1,8 +1,19 @@
 # Source Separation
 
 
-Check WANDB report [here]().
+Check WANDB report [here](https://wandb.ai/idsedykh/ss_dla/reports/source-separation--Vmlldzo1OTQ1NzMy?accessToken=lqxcuksw2cv02q8vov12cp4aqowq516dc4967ljplqjx73ecnrf37tnafe8pev65).
 
+Scores on my validation set: 
+```
+'eval_SI_SDR': 11.45,
+'eval_PESQ': 2.05
+```
+
+Scores on the public test set: 
+```
+'test_SI_SDR': 10.48,
+'test_PESQ': 1.97
+```
 
 ## Installation guide
 
@@ -23,27 +34,15 @@ Check WANDB report [here]().
 ## Reproduction guide
 
 
-run `python train.py -c hw_asr/configs/`
+run `python train.py -c hw_asr/configs/spex_1.json`
 
 To compute metrics:
 
-Download the checkpoint, config [here]().
+Download the checkpoint, config [here](https://disk.yandex.ru/d/LJjUXm1ue_i2ug).
 
-test-other:
 ```bash
 python test.py \
-    --batch-size 32 \
-    --jobs 8 \
-    -c default_test_model/config-other.json \
+    -r default_test_model/checkpoint-82000 \
+    -c default_test_model/config.json \
+    -t test_dir_path
 ```
-
-
-test-clean:
-```bash
-python test.py \
-    --batch-size 32 \
-    --jobs 8 \
-    -c default_test_model/config-clean.json \
-```
-
-I have used a pretty powerful server, so it may fail in case of weaker machine.
