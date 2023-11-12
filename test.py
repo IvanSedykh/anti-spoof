@@ -17,16 +17,14 @@ from hw_asr.trainer import SourceSeparationTrainer
 from hw_asr.utils import ROOT_PATH
 from hw_asr.utils.object_loading import get_dataloaders, get_datasets, get_metrics
 from hw_asr.utils.parse_config import ConfigParser
-from hw_asr.metric.utils import calc_cer, calc_wer
 from hw_asr.collate_fn.collate import collate_fn
 
 # todo:
 from train import MetricsCaller
 
 
-
 # fix random seeds for reproducibility
-SEED = 0xdeadbeef
+SEED = 0xDEADBEEF
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
@@ -38,13 +36,6 @@ def load_safetensors_dict(path: Path, device):
     with safe_open(path, framework="pt", device=device) as f:
         for k in f.keys():
             tensors[k] = f.get_tensor(k)
-
-
-def calc_mean_metric(gt_list: list[str], pred_list:list[str], metric_func: callable):
-    vals = []
-    for target, pred in zip(gt_list, pred_list):
-        vals.append(metric_func(target, pred))
-    return sum(vals) / len(vals)
 
 
 def main(config, out_file):
@@ -61,31 +52,30 @@ def main(config, out_file):
     # setup data_loader instances
     print(f"Loading data...")
     datasets = get_datasets(config)
-    print(datasets['test'])
+    print(datasets["test"])
 
     # build model architecture
     print(f"Building model...")
     model = config.init_obj(config["arch"], module_model)
     logger.info(model)
 
-    checkpoint_path = config.resume + '/model.safetensors'
+    checkpoint_path = config.resume + "/model.safetensors"
     logger.info("Loading checkpoint: {} ...".format(checkpoint_path))
     # state_dict = load_safetensors_dict(checkpoint_path, device)
-    state_dict = load_file(checkpoint_path, 'cpu')
+    state_dict = load_file(checkpoint_path, "cpu")
     model.load_state_dict(state_dict)
 
-    trainer_args = TrainingArguments(**config['trainer_args'])
+    trainer_args = TrainingArguments(**config["trainer_args"])
     trainer = SourceSeparationTrainer(
         model=model,
         args=trainer_args,
         data_collator=collate_fn,
-        compute_metrics=metrics_computer
-        )
-    
-    res = trainer.predict(datasets['test'])
+        compute_metrics=metrics_computer,
+    )
+
+    res = trainer.predict(datasets["test"])
 
     print(res.metrics)
-
 
 
 if __name__ == "__main__":
@@ -168,9 +158,7 @@ if __name__ == "__main__":
                 "datasets": [
                     {
                         "type": "CustomDirTestDataset",
-                        "args": {
-                            "data_dir": str(test_data_folder)
-                        },
+                        "args": {"data_dir": str(test_data_folder)},
                     }
                 ],
             }

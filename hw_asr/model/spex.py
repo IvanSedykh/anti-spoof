@@ -1,6 +1,8 @@
 from hw_asr.base.base_model import BaseModel
 from .nnet.spex_plus import SpEx_Plus
 
+
+# todo: reimplement
 class Spex(SpEx_Plus, BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
