@@ -8,14 +8,14 @@ import torch
 from dotenv import load_dotenv
 from transformers import TrainingArguments, EvalPrediction
 
-import hw_asr.loss as module_loss
-import hw_asr.metric as module_metric
-import hw_asr.model as module_arch
-from hw_asr.trainer import SourceSeparationTrainer, WandbPredictionProgressCallback
-from hw_asr.utils import prepare_device
-from hw_asr.utils.object_loading import get_metrics, get_datasets
-from hw_asr.utils.parse_config import ConfigParser
-from hw_asr.collate_fn.collate import collate_fn
+import src.loss as module_loss
+import src.metric as module_metric
+import src.model as module_arch
+from src.trainer import SourceSeparationTrainer, WandbPredictionProgressCallback
+from src.utils import prepare_device
+from src.utils.object_loading import get_metrics, get_datasets
+from src.utils.parse_config import ConfigParser
+from src.collate_fn.collate import collate_fn
 
 warnings.filterwarnings("ignore", category=UserWarning)
 

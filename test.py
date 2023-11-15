@@ -12,12 +12,12 @@ from safetensors.torch import load_file
 from transformers import TrainingArguments, EvalPrediction
 
 
-import hw_asr.model as module_model
-from hw_asr.trainer import SourceSeparationTrainer
-from hw_asr.utils import ROOT_PATH
-from hw_asr.utils.object_loading import get_dataloaders, get_datasets, get_metrics
-from hw_asr.utils.parse_config import ConfigParser
-from hw_asr.collate_fn.collate import collate_fn
+import src.model as module_model
+from src.trainer import SourceSeparationTrainer
+from src.utils import ROOT_PATH
+from src.utils.object_loading import get_dataloaders, get_datasets, get_metrics
+from src.utils.parse_config import ConfigParser
+from src.collate_fn.collate import collate_fn
 
 # todo:
 from train import MetricsCaller

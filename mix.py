@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fire import Fire
 
-from hw_asr.mixing.seminar_code import MixtureGenerator, LibriSpeechSpeakerFiles
+from src.mixing.seminar_code import MixtureGenerator, LibriSpeechSpeakerFiles
 
 
 def main(
