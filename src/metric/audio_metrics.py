@@ -3,7 +3,7 @@ from torch import nn
 from torchmetrics.audio import ScaleInvariantSignalDistortionRatio
 from torchmetrics.functional.audio import scale_invariant_signal_distortion_ratio, perceptual_evaluation_speech_quality
 
-from src.base.base_metric import BaseMetric
+from src.metric.base_metric import BaseMetric
 
 class SI_SDR_Metric(BaseMetric):
     def __init__(self, name=None, *args, **kwargs):

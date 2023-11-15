@@ -8,7 +8,7 @@ import torchaudio
 from speechbrain.utils.data_utils import download_file
 from tqdm import tqdm
 
-from src.base.base_dataset import BaseDataset
+from src.datasets.base_dataset import BaseDataset
 from src.utils import ROOT_PATH
 
 logger = logging.getLogger(__name__)

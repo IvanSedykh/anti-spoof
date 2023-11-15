@@ -1,4 +1,4 @@
-from src.base.base_model import BaseModel
+from src.model.base_model import BaseModel
 from .nnet.spex_plus import SpEx_Plus
 
 

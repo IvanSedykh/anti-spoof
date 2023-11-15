@@ -3,7 +3,7 @@ from pathlib import Path
 
 import torchaudio
 
-from src.base.base_dataset import BaseDataset
+from src.datasets.base_dataset import BaseDataset
 
 logger = logging.getLogger(__name__)
 

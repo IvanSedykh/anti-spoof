@@ -3,7 +3,7 @@ from typing import List
 import torch
 from torch import Tensor
 
-from src.base.base_metric import BaseMetric
+from src.metric.base_metric import BaseMetric
 from src.base.base_text_encoder import BaseTextEncoder
 from src.metric.utils import calc_wer
 
