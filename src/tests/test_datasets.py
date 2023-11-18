@@ -1,24 +1,29 @@
+import pytest
 import torch
+from torch.utils.data import DataLoader
 
-from src.datasets import LibrispeechMixDataset
-from src.tests.utils import clear_log_folder_after_use
+from src.datasets.fastspeech_dataset import BufferDataset, get_data_to_buffer
+from src.collate_fn.collate import make_collate_fn_tensor
 from src.utils import ROOT_PATH
-from src.utils.parse_config import ConfigParser
 
+from src.tests.test_fastspeech import train_config
 
-def test_librispeech_mix():
-    config_parser = ConfigParser.get_test_configs()
-    with clear_log_folder_after_use(config_parser):
-        ds = LibrispeechMixDataset(
-            "data/datasets/librispeech/dev-clean",
-            config_parser=config_parser,
-            max_audio_length=13,
-            limit=10,
-        )
-        assert len(ds) == 10
+def test_fastspeechdataset(train_config):
+    buffer = get_data_to_buffer(train_config)
+    dataset = BufferDataset(buffer)
 
-        item = ds[0]
-        assert isinstance(item["ref_wav"], torch.Tensor)
-        assert isinstance(item["mix_wav"], torch.Tensor)
-        assert isinstance(item["target_wav"], torch.Tensor)
-        assert isinstance(item["speaker_id"], torch.Tensor)
+    item = dataset[0]
+    # print(item)
+
+    collate_fn = make_collate_fn_tensor(train_config.batch_expand_size)
+
+    loader = DataLoader(
+        dataset,
+        batch_size=train_config.batch_size * train_config.batch_expand_size,
+        drop_last=True,
+        collate_fn=collate_fn
+    )
+
+    for batch in loader:
+        break
+    # print(batch)

@@ -26,4 +26,6 @@ accelerate
 pesq
 soundfile
 safetensors
-
+Unidecode
+gdown
+lovely-tensors

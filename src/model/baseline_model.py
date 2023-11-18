@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.nn import Sequential
 
-from src.base import BaseModel
+from .base_model import BaseModel
 
 
 class BaselineModel(BaseModel):

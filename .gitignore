@@ -1,3 +1,7 @@
+*.zip
+*.bz2
+*.gz
+waveglow
 *.ipynb
 .DS_Store
 default_test_model

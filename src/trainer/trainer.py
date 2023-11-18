@@ -10,7 +10,7 @@ from torch.nn.utils import clip_grad_norm_
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
-from src.base import BaseTrainer
+from .base_trainer import BaseTrainer
 from src.base.base_text_encoder import BaseTextEncoder
 from src.logger.utils import plot_spectrogram_to_buf
 from src.metric.utils import calc_cer, calc_wer
