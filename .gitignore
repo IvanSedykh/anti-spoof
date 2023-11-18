@@ -2,6 +2,7 @@
 *.bz2
 *.gz
 waveglow
+outputs
 *.ipynb
 .DS_Store
 default_test_model
