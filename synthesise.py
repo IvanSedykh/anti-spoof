@@ -26,7 +26,10 @@ def synthesis(model, text, alpha=1.0):
 
 
 def get_data():
-    tests = [ 
+    tests = [
+        "A defibrillator is a device that gives a high energy electric shock to the heart of someone who is in cardiac arrest",
+        "Massachusetts Institute of Technology may be best known for its math, science and engineering education",
+        "Wasserstein distance or Kantorovich Rubinstein metric is a distance function defined between probability distributions on a given metric space",
         "Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition",
         "in being comparatively modern.",
         "For although the Chinese took impressions from wood blocks engraved in relief for centuries before the woodcutters of the Netherlands, by a similar process",
@@ -41,8 +44,9 @@ def get_data():
 @torch.no_grad()
 def main(config: DictConfig):
     model = hydra.utils.instantiate(config.model)
-    checkpoint_path = to_absolute_path("outputs/2023-11-19/17-39-50/output/checkpoint-17000/model.safetensors")
-    state_dict = load_file(checkpoint_path, "cpu")
+    # todo: add to config
+    checkpoint_path = to_absolute_path("outputs/2023-11-19/21-44-45/output/checkpoint-6000/model.safetensors")
+    state_dict = load_file(checkpoint_path, device="cpu")
     model.load_state_dict(state_dict)
     model = model.cuda()
     model.eval()

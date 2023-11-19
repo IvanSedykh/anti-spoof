@@ -34,6 +34,8 @@ class FFTBlock(torch.nn.Module):
 
     def __init__(self, d_model, d_inner, n_head, dropout=0.1):
         super().__init__()
+
+        self.layer_norm = nn.LayerNorm(d_model)
         self.slf_attn = nn.MultiheadAttention(
             embed_dim=d_model, num_heads=n_head, dropout=dropout, batch_first=True
         )
@@ -48,9 +50,13 @@ class FFTBlock(torch.nn.Module):
 
         # [bs, seq_len, seq_len] -> [bs*num_heads, seq_len, seq_len]
         slf_attn_mask = slf_attn_mask.repeat(self.slf_attn.num_heads, 1, 1)
+
+        enc_input = self.layer_norm(enc_input)
         enc_output, enc_slf_attn = self.slf_attn(
             enc_input, enc_input, enc_input, attn_mask=slf_attn_mask
         )
+        # skip connection around attention
+        enc_output += enc_input
 
         if non_pad_mask is not None:
             enc_output *= non_pad_mask
