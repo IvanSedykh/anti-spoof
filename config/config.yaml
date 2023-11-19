@@ -59,7 +59,7 @@ trainer_args:
   evaluation_strategy: "steps"
   eval_steps: 500
   logging_steps: 10
-  save_steps: 1000
+  save_steps: 100
   save_strategy: "steps"
   save_total_limit: 5
   include_inputs_for_metrics: false

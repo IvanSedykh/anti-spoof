@@ -138,6 +138,7 @@ class LengthRegulator(nn.Module):
 
     def LR(self, x, duration_predictor_output, mel_max_length=None):
         expand_max_len = torch.max(torch.sum(duration_predictor_output, -1), -1)[0]
+        print(f"{expand_max_len=}")
         alignment = torch.zeros(
             duration_predictor_output.size(0),
             expand_max_len,
@@ -152,6 +153,7 @@ class LengthRegulator(nn.Module):
         return output
 
     def forward(self, x, alpha=1.0, target=None, mel_max_length=None):
+        print(f"{x.shape=}")
         duration_predictor_output = self.duration_predictor(x)
         if target is not None:
             output = self.LR(x, target, mel_max_length)
@@ -160,6 +162,7 @@ class LengthRegulator(nn.Module):
             duration_predictor_output = (
                 (duration_predictor_output + 0.5) * alpha
             ).int()
+            print(f"{duration_predictor_output.shape=}")
             output = self.LR(x, duration_predictor_output)
             # wtf is this
             mel_pos = (

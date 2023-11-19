@@ -1,7 +1,8 @@
+*.patch
 *.zip
 *.bz2
 *.gz
-waveglow
+waveglow/*/*.pt
 outputs
 *.ipynb
 .DS_Store
