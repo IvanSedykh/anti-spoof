@@ -9,6 +9,9 @@ import torch
 ROOT_PATH = Path(__file__).absolute().resolve().parent.parent.parent
 
 
+def count_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 def ensure_dir(dirname):
     dirname = Path(dirname)
     if not dirname.is_dir():

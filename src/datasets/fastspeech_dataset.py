@@ -22,6 +22,8 @@ def process_text(train_text_path):
 def get_data_to_buffer(train_config):
     buffer = list()
     text = process_text(to_absolute_path(train_config.data_path))
+    if hasattr(train_config, "limit"):
+        text = text[: train_config.limit]
 
     start = time.perf_counter()
     for i in tqdm(range(len(text))):
@@ -56,6 +58,7 @@ class BufferDataset(Dataset):
 
     @classmethod
     def from_config(cls, train_config: DictConfig):
+        # todo: remove limit after debug
         buffer = get_data_to_buffer(train_config)
         return cls(buffer)
 

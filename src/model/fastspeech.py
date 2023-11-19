@@ -137,9 +137,7 @@ class LengthRegulator(nn.Module):
         self.duration_predictor = DurationPredictor(model_config)
 
     def LR(self, x, duration_predictor_output, mel_max_length=None):
-        expand_max_len = torch.max(torch.sum(duration_predictor_output, -1), -1)[
-            0
-        ].item()
+        expand_max_len = torch.max(torch.sum(duration_predictor_output, -1), -1)[0]
         alignment = torch.zeros(
             duration_predictor_output.size(0),
             expand_max_len,
@@ -156,7 +154,7 @@ class LengthRegulator(nn.Module):
     def forward(self, x, alpha=1.0, target=None, mel_max_length=None):
         duration_predictor_output = self.duration_predictor(x)
         if target is not None:
-            output = self.LR(target, target, mel_max_length)
+            output = self.LR(x, target, mel_max_length)
             return output, duration_predictor_output
         else:
             duration_predictor_output = (
@@ -280,6 +278,9 @@ class Decoder(nn.Module):
         non_pad_mask = get_non_pad_mask(enc_pos, model_config=self.model_config)
 
         # -- Forward
+        # print(f"{enc_seq.shape=}")
+        # print(f"{enc_pos.shape=}")
+        # print(f"{self.position_enc(enc_pos).shape=}")
         dec_output = enc_seq + self.position_enc(enc_pos)
 
         for dec_layer in self.layer_stack:
@@ -320,6 +321,7 @@ class FastSpeech(nn.Module):
         mask = mask.unsqueeze(-1).expand(-1, -1, mel_output.size(-1))
         return mel_output.masked_fill(mask, 0.0)
 
+    # todo: pass args as dict
     def forward(
         self,
         src_seq,
@@ -328,10 +330,14 @@ class FastSpeech(nn.Module):
         mel_max_length=None,
         length_target=None,
         alpha=1.0,
+        **kwargs,
     ):
         encoder_output, _ = self.encoder(src_seq, src_pos)
 
         if self.training:
+            # print(f"{encoder_output.shape=}")
+            # print(f"{length_target.shape=}")
+            # print(f"{mel_max_length=}")
             length_regulator_output, duration_predictor_output = self.length_regulator(
                 encoder_output,
                 target=length_target,
@@ -343,7 +349,11 @@ class FastSpeech(nn.Module):
             mel_output = self.mel_linear(decoder_output)
             mel_output = self.mask_tensor(mel_output, mel_pos, mel_max_length)
 
-            return mel_output, duration_predictor_output
+            # return mel_output, duration_predictor_output
+            return {
+                "mel_output": mel_output,
+                "duration_predictor_output": duration_predictor_output,
+            }
         else:
             length_regulator_output, decoder_pos = self.length_regulator(
                 encoder_output, alpha=alpha
@@ -353,4 +363,5 @@ class FastSpeech(nn.Module):
 
             mel_output = self.mel_linear(decoder_output)
 
-            return mel_output
+            # return mel_output
+            return {"mel_output": mel_output}

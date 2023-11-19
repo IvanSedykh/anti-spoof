@@ -1,116 +1,42 @@
 from operator import xor
 
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Subset
+from omegaconf import DictConfig
+from hydra.utils import instantiate
+
 
 import src.augmentations
 import src.datasets
-from src import batch_sampler as batch_sampler_module
-from src.collate_fn.collate import collate_fn
-from src.utils.parse_config import ConfigParser
+from src.collate_fn.collate import make_collate_fn_tensor
+
 import src.metric as module_metric
 
 
-def get_datasets(configs: ConfigParser) -> dict[str, Dataset]:
+def get_datasets(config: DictConfig) -> dict[str, Dataset]:
     datasets_dict = {}
-    for split, params in configs["data"].items():
-        num_workers = params.get("num_workers", 1)
+    for split, params in config["data"].items():
 
-        # set train augmentations
-        if split == "train":
-            wave_augs, spec_augs = src.augmentations.from_configs(configs)
-            drop_last = True
-        else:
-            wave_augs, spec_augs = None, None
-            drop_last = False
+        # todo: imlement augmentations
 
         # create and join datasets
         datasets = []
         for ds in params["datasets"]:
             datasets.append(
-                configs.init_obj(
-                    ds,
-                    src.datasets,
-                    config_parser=configs,
-                    wave_augs=wave_augs,
-                )
+                instantiate(ds)
             )
         assert len(datasets)
         if len(datasets) > 1:
             dataset = ConcatDataset(datasets)
         else:
             dataset = datasets[0]
+        
+        if hasattr(params, 'limit'):
+            dataset = Subset(dataset, range(params.limit))
         datasets_dict[split] = dataset
     return datasets_dict
 
-def get_dataloaders(
-    configs: ConfigParser
-) -> dict[str, DataLoader]:
-    dataloaders = {}
-    for split, params in configs["data"].items():
-        num_workers = params.get("num_workers", 1)
 
-        # set train augmentations
-        if split == "train":
-            wave_augs, spec_augs = src.augmentations.from_configs(configs)
-            drop_last = True
-        else:
-            wave_augs, spec_augs = None, None
-            drop_last = False
-
-        # create and join datasets
-        datasets = []
-        for ds in params["datasets"]:
-            datasets.append(
-                configs.init_obj(
-                    ds,
-                    src.datasets,
-                    config_parser=configs,
-                    wave_augs=wave_augs,
-                    spec_augs=spec_augs,
-                )
-            )
-        assert len(datasets)
-        if len(datasets) > 1:
-            dataset = ConcatDataset(datasets)
-        else:
-            dataset = datasets[0]
-
-        # select batch size or batch sampler
-        assert xor(
-            "batch_size" in params, "batch_sampler" in params
-        ), "You must provide batch_size or batch_sampler for each split"
-        if "batch_size" in params:
-            bs = params["batch_size"]
-            shuffle = True
-            batch_sampler = None
-        elif "batch_sampler" in params:
-            batch_sampler = configs.init_obj(
-                params["batch_sampler"], batch_sampler_module, data_source=dataset
-            )
-            bs, shuffle = 1, False
-        else:
-            raise Exception()
-
-        # Fun fact. An hour of debugging was wasted to write this line
-        assert bs <= len(
-            dataset
-        ), f"Batch size ({bs}) shouldn't be larger than dataset length ({len(dataset)})"
-
-        # create dataloader
-        dataloader = DataLoader(
-            dataset,
-            batch_size=bs,
-            collate_fn=collate_fn,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            batch_sampler=batch_sampler,
-            drop_last=drop_last,
-        )
-        dataloaders[split] = dataloader
-    return dataloaders
-
-
-def get_metrics(config: ConfigParser) -> dict[str, list]:
+def get_metrics(config: DictConfig) -> dict[str, list]:
     common_metrics = [
         config.init_obj(metric_dict, module_metric)
         for metric_dict in config["metrics"].get("all", [])

@@ -13,7 +13,7 @@ from transformers import TrainingArguments, EvalPrediction
 
 
 import src.model as module_model
-from src.trainer import SourceSeparationTrainer
+from src.trainer import TTSTrainer
 from src.utils import ROOT_PATH
 from src.utils.object_loading import get_dataloaders, get_datasets, get_metrics
 from src.utils.parse_config import ConfigParser
@@ -66,7 +66,7 @@ def main(config, out_file):
     model.load_state_dict(state_dict)
 
     trainer_args = TrainingArguments(**config["trainer_args"])
-    trainer = SourceSeparationTrainer(
+    trainer = TTSTrainer(
         model=model,
         args=trainer_args,
         data_collator=collate_fn,

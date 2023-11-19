@@ -1,7 +1,7 @@
 from .trainer import *
-from src.trainer.hf_trainer import SourceSeparationTrainer, WandbPredictionProgressCallback
+from src.trainer.hf_trainer import TTSTrainer, WandbPredictionProgressCallback
 
 __all__ = [
-    'SourceSeparationTrainer',
+    'TTSTrainer',
     "WandbPredictionProgressCallback"
 ]

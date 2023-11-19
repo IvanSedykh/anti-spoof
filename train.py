@@ -2,28 +2,36 @@ import argparse
 import collections
 from typing import Any
 import warnings
+import logging
 
 import numpy as np
 import torch
+import hydra
+from hydra.utils import instantiate
+from omegaconf import OmegaConf, DictConfig
 from dotenv import load_dotenv
 from transformers import TrainingArguments, EvalPrediction
 
 import src.loss as module_loss
 import src.metric as module_metric
 import src.model as module_arch
-from src.trainer import SourceSeparationTrainer, WandbPredictionProgressCallback
-from src.utils import prepare_device
+from src.trainer import TTSTrainer, WandbPredictionProgressCallback
+from src.utils import prepare_device, count_params
 from src.utils.object_loading import get_metrics, get_datasets
-from src.utils.parse_config import ConfigParser
 from src.collate_fn.collate import collate_fn
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# setup logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 # fix random seeds for reproducibility
 SEED = 0xDEADBEEF
 torch.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+# let's go fast boi
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 load_dotenv()
@@ -45,37 +53,38 @@ class MetricsCaller:
             metrics[metric.name] = metric(preds, target)
         return metrics
 
+@hydra.main(config_path="config", config_name="config")
+def main(config: DictConfig):
 
-def main(config):
-    logger = config.get_logger("train")
+    print(OmegaConf.to_yaml(config))
+    print(config)
 
     # setup data_loader instances
     datasets = get_datasets(config)
 
     # build model architecture, then print to console
-    model = config.init_obj(config["arch"], module_arch)
+    model = instantiate(config.model)
     logger.info(model)
+    print(f"Number of parameters: {count_params(model)}")
 
     # get function handles of loss and metrics
-    loss_module = config.init_obj(config["loss"], module_loss)
+    loss_module = instantiate(config.loss)
 
-    metrics = get_metrics(config)
-    metrics_computer = MetricsCaller(metrics)
+    # metrics = get_metrics(config)
+    # metrics_computer = MetricsCaller(metrics)
 
-    config["trainer_args"]["output_dir"] = config._save_dir
-    trainer_args = TrainingArguments(**config["trainer_args"])
+    trainer_args = TrainingArguments(**config.trainer_args)
 
-    trainer = SourceSeparationTrainer(
+    trainer = TTSTrainer(
         model=model,
         args=trainer_args,
         train_dataset=datasets["train"],
-        eval_dataset=datasets["val"],
         data_collator=collate_fn,
-        compute_metrics=metrics_computer,
+        # compute_metrics=metrics_computer,
     )
 
-    callback = WandbPredictionProgressCallback(trainer, datasets["val"], 10)
-    trainer.add_callback(callback)
+    # callback = WandbPredictionProgressCallback(trainer, datasets["val"], 10)
+    # trainer.add_callback(callback)
 
     trainer.set_loss(loss_module)
 
@@ -83,36 +92,4 @@ def main(config):
 
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser(description="PyTorch Template")
-    args.add_argument(
-        "-c",
-        "--config",
-        default=None,
-        type=str,
-        help="config file path (default: None)",
-    )
-    args.add_argument(
-        "-r",
-        "--resume",
-        default=None,
-        type=str,
-        help="path to latest checkpoint (default: None)",
-    )
-    args.add_argument(
-        "-d",
-        "--device",
-        default=None,
-        type=str,
-        help="indices of GPUs to enable (default: all)",
-    )
-
-    # custom cli options to modify configuration from default values given in json file.
-    CustomArgs = collections.namedtuple("CustomArgs", "flags type target")
-    options = [
-        CustomArgs(["--lr", "--learning_rate"], type=float, target="optimizer;args;lr"),
-        CustomArgs(
-            ["--bs", "--batch_size"], type=int, target="data_loader;args;batch_size"
-        ),
-    ]
-    config = ConfigParser.from_args(args, options)
-    main(config)
+    main()

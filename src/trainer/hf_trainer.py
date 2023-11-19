@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Subset
 import wandb
 
 
-class SourceSeparationTrainer(Trainer):
+class TTSTrainer(Trainer):
     def set_loss(self, loss_module: nn.Module):
         self.loss_module = loss_module
 
@@ -135,7 +135,7 @@ class SourceSeparationTrainer(Trainer):
 # todo: move to another module
 
 class WandbPredictionProgressCallback(WandbCallback):
-    def __init__(self, trainer: SourceSeparationTrainer, val_dataset, num_samples: int):
+    def __init__(self, trainer: TTSTrainer, val_dataset, num_samples: int):
         print("Init WandbPredictionProgressCallback")
         super().__init__()
         self.trainer = trainer

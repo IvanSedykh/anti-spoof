@@ -71,7 +71,10 @@ def pad_2D_tensor(inputs, maxlen=None):
     return output
 
 
-def reprocess_tensor(batch, cut_list):
+def reprocess_tensor(batch, cut_list = None):
+    if cut_list is None:
+        cut_list = list(range(len(batch)))
+
     texts = [batch[ind]["text"] for ind in cut_list]
     mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
     durations = [batch[ind]["duration"] for ind in cut_list]
@@ -113,17 +116,18 @@ def reprocess_tensor(batch, cut_list):
     mel_targets = pad_2D_tensor(mel_targets)
 
     out = {
-        "text": texts,
-        "mel_target": mel_targets,
-        "duration": durations,
-        "mel_pos": mel_pos,
-        "src_pos": src_pos,
-        "mel_max_len": max_mel_len,
+        "src_seq": texts.long(),
+        "src_pos": src_pos.long(),
+        "mel_pos": mel_pos.long(),
+        "mel_max_length": max_mel_len,
+        "length_target": durations.int(),
+        "mel_target": mel_targets.float(),
     }
 
     return out
 
 
+# eto pizdets
 def make_collate_fn_tensor(batch_expand_size: int):
     def collate_fn_tensor(batch):
         len_arr = np.array([d["text"].size(0) for d in batch])
@@ -142,3 +146,6 @@ def make_collate_fn_tensor(batch_expand_size: int):
         return output
 
     return collate_fn_tensor
+
+def collate_fn(batch):
+    return reprocess_tensor(batch)
