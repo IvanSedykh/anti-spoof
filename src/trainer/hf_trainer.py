@@ -19,7 +19,10 @@ class TTSTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         outputs = model(**inputs)
         if hasattr(self, "loss_module"):
-            loss = self.loss_module(inputs=inputs, outputs=outputs)
+            loss_dict = self.loss_module(inputs=inputs, outputs=outputs)
+            loss = loss_dict["mel_loss"] + loss_dict["duration_predictor_loss"]
+            if self.state.global_step % self.args.logging_steps == 0:
+                self.log({k: v.detach().cpu().item() for k, v in loss_dict.items()})
         else:
             loss = torch.tensor(0.0)
             # todo: think how to skip loss compute, nut compute metrics
@@ -77,19 +80,27 @@ class TTSTrainer(Trainer):
             Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
-        has_labels = False if len(self.label_names) == 0 else all(inputs.get(k) is not None for k in self.label_names)
+        has_labels = (
+            False
+            if len(self.label_names) == 0
+            else all(inputs.get(k) is not None for k in self.label_names)
+        )
         # For CLIP-like models capable of returning loss values.
         # If `return_loss` is not specified or being `None` in `inputs`, we check if the default value of `return_loss`
         # is `True` in `model.forward`.
         return_loss = inputs.get("return_loss", None)
         if return_loss is None:
             return_loss = self.can_return_loss
-        loss_without_labels = True if len(self.label_names) == 0 and return_loss else False
+        loss_without_labels = (
+            True if len(self.label_names) == 0 and return_loss else False
+        )
 
         inputs = self._prepare_inputs(inputs)
         if ignore_keys is None:
             if hasattr(self.model, "config"):
-                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+                ignore_keys = getattr(
+                    self.model.config, "keys_to_ignore_at_inference", []
+                )
             else:
                 ignore_keys = []
 
@@ -104,12 +115,18 @@ class TTSTrainer(Trainer):
         with torch.no_grad():
             if has_labels or loss_without_labels:
                 with self.compute_loss_context_manager():
-                    loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                    loss, outputs = self.compute_loss(
+                        model, inputs, return_outputs=True
+                    )
                 loss = loss.mean().detach()
 
                 if isinstance(outputs, dict):
                     # logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
-                    logits = {k: v for k, v in outputs.items() if k not in ignore_keys + ["loss"]}
+                    logits = {
+                        k: v
+                        for k, v in outputs.items()
+                        if k not in ignore_keys + ["loss"]
+                    }
                 else:
                     logits = outputs[1:]
             else:
@@ -118,7 +135,11 @@ class TTSTrainer(Trainer):
                     outputs = model(**inputs)
                 if isinstance(outputs, dict):
                     # logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
-                    logits = {k: v for k, v in outputs.items() if k not in ignore_keys + ["loss"]}
+                    logits = {
+                        k: v
+                        for k, v in outputs.items()
+                        if k not in ignore_keys + ["loss"]
+                    }
                 else:
                     logits = outputs
 
@@ -130,9 +151,8 @@ class TTSTrainer(Trainer):
         return (loss, logits, labels)
 
 
-
-
 # todo: move to another module
+
 
 class WandbPredictionProgressCallback(WandbCallback):
     def __init__(self, trainer: TTSTrainer, val_dataset, num_samples: int):
@@ -147,12 +167,11 @@ class WandbPredictionProgressCallback(WandbCallback):
 
         hf_output = self.trainer.predict(self.sample_dataset)
         predictions: dict = hf_output.predictions
-        predictions = predictions['predict_wav']
+        predictions = predictions["predict_wav"]
         labels = hf_output.label_ids
 
         audio_predictions = [
-            wandb.Audio(pred, sample_rate=16_000)
-            for i, pred in enumerate(predictions)
+            wandb.Audio(pred, sample_rate=16_000) for i, pred in enumerate(predictions)
         ]
 
         audio_predictions_normalized = [
@@ -168,17 +187,20 @@ class WandbPredictionProgressCallback(WandbCallback):
         ]
         audio_mix = [
             wandb.Audio(
-                np.array(self.sample_dataset[i]['mix_wav'][0]), sample_rate=16000,
+                np.array(self.sample_dataset[i]["mix_wav"][0]),
+                sample_rate=16000,
             )
             for i in range(self.num_samples)
         ]
 
-        predictions_df = pd.DataFrame({
-             "mix": audio_mix,
-             "predictions": audio_predictions, 
-             "predictions_norm":audio_predictions_normalized, 
-             "targets": audio_labels
-        })
+        predictions_df = pd.DataFrame(
+            {
+                "mix": audio_mix,
+                "predictions": audio_predictions,
+                "predictions_norm": audio_predictions_normalized,
+                "targets": audio_labels,
+            }
+        )
         predictions_df["epoch"] = state.epoch
         records_table = self._wandb.Table(dataframe=predictions_df)
         #   log the table to wandb
@@ -186,4 +208,4 @@ class WandbPredictionProgressCallback(WandbCallback):
 
     @staticmethod
     def normalize_audio(wav: np.array):
-        return 20 * wav/np.linalg.norm(wav)
+        return 20 * wav / np.linalg.norm(wav)

@@ -2,7 +2,7 @@
 *.zip
 *.bz2
 *.gz
-waveglow/*/*.pt
+*.pt
 outputs
 *.ipynb
 .DS_Store

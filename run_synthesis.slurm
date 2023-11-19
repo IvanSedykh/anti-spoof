@@ -28,4 +28,5 @@ source /home/i.sedyh/miniconda3/bin/activate asr_env
 unset TMPDIR
 
 srun \
-python train.py
+python synthesise.py \
+# hydra.job.chdir=False

@@ -26,5 +26,7 @@ class FastSpeechLoss(FastSpeechLossInner):
         duration_predictor_target = inputs["length_target"]
 
         mel_loss, duration_predictor_loss = super().forward(mel, duration_predicted, mel_target, duration_predictor_target)
-        loss = mel_loss + duration_predictor_loss
-        return loss
+        return {
+            "mel_loss": mel_loss,
+            "duration_predictor_loss": duration_predictor_loss
+        }
