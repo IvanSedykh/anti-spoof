@@ -46,6 +46,7 @@ def main(config: DictConfig):
     model = hydra.utils.instantiate(config.model)
     # todo: add to config
     checkpoint_path = to_absolute_path("outputs/2023-11-19/21-44-45/output/checkpoint-6000/model.safetensors")
+    checkpoint_path = to_absolute_path(config.checkpoint_path)
     state_dict = load_file(checkpoint_path, device="cpu")
     model.load_state_dict(state_dict)
     model = model.cuda()

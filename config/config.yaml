@@ -54,7 +54,7 @@ trainer_args:
   max_steps: 200000
   learning_rate: 0.001
   max_grad_norm: 2.0
-  warmup_steps: 100
+  warmup_steps: 1000
   logging_steps: 50
   save_steps: 500
   save_strategy: "steps"
