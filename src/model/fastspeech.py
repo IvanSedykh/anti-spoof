@@ -316,7 +316,7 @@ class FastSpeech(nn.Module):
     """FastSpeech"""
 
     def __init__(self, model_config):
-        super(FastSpeech, self).__init__()
+        super().__init__()
 
         self.encoder = Encoder(model_config)
         self.length_regulator = LengthRegulator(model_config)
