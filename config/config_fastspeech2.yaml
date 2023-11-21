@@ -1,0 +1,79 @@
+data:
+  train:
+    datasets:
+      # todo: refactor this
+      - _target_: src.datasets.FastSpeech2Dataset.from_config
+        train_config:
+          mel_ground_truth: "./data/mels"
+          alignment_path: "./data/alignments"
+          data_path: "./data/train.txt"
+          pitch_path: "./data/pitch"
+          energy_path: "./data/energy"
+          text_cleaners: ["english_cleaners"]
+          # limit: 64
+
+model:
+  _target_: src.model.FastSpeech2
+  model_config:
+    vocab_size: 300
+    max_seq_len: 3000
+    num_mels: 80
+
+    encoder_dim: 256
+    encoder_n_layer: 4
+    encoder_head: 2
+    encoder_conv1d_filter_size: 1024
+
+    decoder_dim: 256
+    decoder_n_layer: 4
+    decoder_head: 2
+    decoder_conv1d_filter_size: 1024
+
+    fft_conv1d_kernel: [9, 1]
+    fft_conv1d_padding: [4, 0]
+
+    duration_predictor_filter_size: 256
+    duration_predictor_kernel_size: 3
+    dropout: 0.1
+
+    PAD: 0
+    UNK: 1
+    BOS: 2
+    EOS: 3
+
+    PAD_WORD: "<blank>"
+    UNK_WORD: "<unk>"
+    BOS_WORD: "<s>"
+    EOS_WORD: "</s>"
+
+    pitch_regulator_config:
+      min: 59
+      max: 888
+      n_bins: 256
+    energy_regulator_config:
+      min: 15
+      max: 92
+      n_bins: 256
+
+
+loss:
+  _target_: src.loss.FastSpeech2Loss
+
+trainer_args:
+  output_dir: "./output"
+  per_device_train_batch_size: 64
+  gradient_accumulation_steps: 1
+  max_steps: 200000
+  learning_rate: 0.001
+  max_grad_norm: 2.0
+  warmup_steps: 1000
+  logging_steps: 50
+  save_steps: 500
+  save_strategy: "steps"
+  save_total_limit: 5
+  # load_best_model_at_end: true
+  include_inputs_for_metrics: false
+  # label_names:
+  #   - "target_wav"
+  report_to: "wandb"
+  remove_unused_columns: false

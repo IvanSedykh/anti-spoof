@@ -18,7 +18,9 @@ import src.model as module_arch
 from src.trainer import TTSTrainer, WandbPredictionProgressCallback
 from src.utils import prepare_device, count_params
 from src.utils.object_loading import get_metrics, get_datasets
-from src.collate_fn.collate import collate_fn
+# kinda cringe but ok for now
+from src.collate_fn.collate import collate_fn as collate_fn_fastspeech1
+from src.collate_fn import collate_fn_fastspeech2
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -75,12 +77,13 @@ def main(config: DictConfig):
 
     trainer_args = TrainingArguments(**config.trainer_args)
 
+    # it may be better to chose collate fn based on dataset/model, but i dont want to to extra work
+
     trainer = TTSTrainer(
         model=model,
         args=trainer_args,
         train_dataset=datasets["train"],
-        data_collator=collate_fn,
-        # compute_metrics=metrics_computer,
+        data_collator=collate_fn_fastspeech2
     )
 
     # callback = WandbPredictionProgressCallback(trainer, datasets["val"], 10)

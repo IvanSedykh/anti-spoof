@@ -27,5 +27,11 @@ source /home/i.sedyh/miniconda3/bin/activate asr_env
 
 unset TMPDIR
 
+# !!!
+#export WANDB_MODE=disabled 
+export HYDRA_FULL_ERROR=1
+#export CUDA_LAUNCH_BLOCKING=1
+
 srun \
-python train.py
+python train.py \
+    --config-name config_fastspeech2

@@ -31,3 +31,4 @@ gdown
 lovely-tensors
 hydra-core
 inflect
+pyworld

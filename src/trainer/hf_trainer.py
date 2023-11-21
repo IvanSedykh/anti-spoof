@@ -20,8 +20,13 @@ class TTSTrainer(Trainer):
         outputs = model(**inputs)
         if hasattr(self, "loss_module"):
             loss_dict = self.loss_module(inputs=inputs, outputs=outputs)
-            loss = loss_dict["mel_loss"] + loss_dict["duration_predictor_loss"]
-            if self.state.global_step % self.args.logging_steps == 0:
+            loss = (
+                loss_dict["mel_loss"]
+                + loss_dict["duration_predictor_loss"]
+                + loss_dict["pitch_predictor_loss"]
+                + loss_dict["energy_predictor_loss"]
+            )
+            if (self.state.global_step % self.args.logging_steps == 0) and self.state.global_step != 0:
                 self.log({k: v.detach().cpu().item() for k, v in loss_dict.items()})
         else:
             loss = torch.tensor(0.0)
