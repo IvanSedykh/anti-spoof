@@ -1,19 +1,10 @@
-# Source Separation
+# Text 2 Speech (FastSpeech2)
 
 
-Check WANDB report [here](https://wandb.ai/idsedykh/ss_dla/reports/source-separation--Vmlldzo1OTQ1NzMy?accessToken=lqxcuksw2cv02q8vov12cp4aqowq516dc4967ljplqjx73ecnrf37tnafe8pev65).
+Check WANDB report with generated samples [here](https://wandb.ai/idsedykh/tts_dla/reports/FastSpeech2--Vmlldzo2MDM2ODg4?accessToken=ls1iem1dgdfd6633dm9c9yo7m9sb70uvr8gj73apd56xugdaw6n0gi54vrxanptj).
 
-Scores on my validation set: 
-```
-'eval_SI_SDR': 11.45,
-'eval_PESQ': 2.05
-```
-
-Scores on the public test set: 
-```
-'test_SI_SDR': 10.48,
-'test_PESQ': 1.97
-```
+MOS score is 5/5.  
+BONUS: implemented Hydra config.
 
 ## Installation guide
 
@@ -30,19 +21,10 @@ Scores on the public test set:
 4. pray and hope
 
 
-
 ## Reproduction guide
 
+Dowbload data `bash download_data.sh`
 
-run `python train.py -c hw_asr/configs/spex_1.json`
+run `python train.py --config-name config_fastspeech2`
 
-To compute metrics:
-
-Download the checkpoint, config [here](https://disk.yandex.ru/d/LJjUXm1ue_i2ug).
-
-```bash
-python test.py \
-    -r default_test_model/checkpoint-82000 \
-    -c default_test_model/config.json \
-    -t test_dir_path
-```
+For generation check [run_synthesis.slurm]() script. Checkpoint may be downloaded [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ) or [here](https://disk.yandex.ru/d/tOfUBdgKYCWRxQ).
