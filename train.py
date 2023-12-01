@@ -61,6 +61,7 @@ def main(config: DictConfig):
         num_workers=config.data.train.num_workers,
         # collate_fn=collate_fn,
         pin_memory=True,
+        drop_last=True,
     )
 
     mel_transform = MelSpectrogram()
@@ -147,7 +148,7 @@ def main(config: DictConfig):
         real_mels = mel_transform(real_wavs)
 
         fake_wav = generator(real_mels)
-        fake_mels = mel_transform(fake_wav)
+        fake_mels = mel_transform(fake_wav.squeeze())
 
         # ======== Discriminator ========
         optimizer_d.zero_grad()
@@ -223,6 +224,8 @@ def main(config: DictConfig):
 
             real_spectrogram_sample = real_mels[0].detach().cpu().unsqueeze(2).numpy()
             fake_spectrogram_sample = fake_mels[0].detach().cpu().unsqueeze(2).numpy()
+            real_wav_sample = real_wavs[0].cpu().numpy()
+            fake_wav_sample = fake_wav[0].detach().cpu().squeeze().numpy()
 
             accelerator.log(
                 {
@@ -241,7 +244,9 @@ def main(config: DictConfig):
                     "lr_g": learning_rate_g,
                     "lr_d": learning_rate_d,
                     "true_mel": wandb.Image(real_spectrogram_sample),
-                    "gen_mel": wandb.Image(fake_spectrogram_sample)
+                    "gen_mel": wandb.Image(fake_spectrogram_sample),
+                    "true_wav": wandb.Audio(real_wav_sample, sample_rate=22050),
+                    "gen_wav": wandb.Audio(fake_wav_sample, sample_rate=22050),
                 },
                 step=step,
             )
