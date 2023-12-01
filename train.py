@@ -13,6 +13,8 @@ from omegaconf import OmegaConf, DictConfig
 from dotenv import load_dotenv
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
+import transformers
+import wandb
 
 
 from src.model.hifigan import (
@@ -94,6 +96,11 @@ def main(config: DictConfig):
         weight_decay=config.optimizer.weight_decay,
         eps=config.optimizer.eps,
     )
+    scheduler_g = transformers.get_linear_schedule_with_warmup(
+        optimizer_g,
+        num_training_steps=config.trainer_args.max_steps,
+        num_warmup_steps=config.trainer_args.warmup_steps,
+    )
 
     optimizer_d = torch.optim.AdamW(
         list(msd.parameters()) + list(mpd.parameters()),
@@ -102,13 +109,35 @@ def main(config: DictConfig):
         weight_decay=config.optimizer.weight_decay,
         eps=config.optimizer.eps,
     )
+    scheduler_d = transformers.get_linear_schedule_with_warmup(
+        optimizer_d,
+        num_training_steps=config.trainer_args.max_steps,
+        num_warmup_steps=config.trainer_args.warmup_steps,
+    )
 
     # setup accelerator
     accelerator = Accelerator(log_with="wandb", step_scheduler_with_optimizer=False)
     accelerator.init_trackers("nv_dla", config=OmegaConf.to_container(config))
-    generator, msd, mpd, optimizer_g, optimizer_d, train_loader = accelerator.prepare(
-        generator, msd, mpd, optimizer_g, optimizer_d, train_loader
+    (
+        generator,
+        msd,
+        mpd,
+        optimizer_g,
+        scheduler_g,
+        optimizer_d,
+        scheduler_d,
+        train_loader,
+    ) = accelerator.prepare(
+        generator,
+        msd,
+        mpd,
+        optimizer_g,
+        scheduler_g,
+        optimizer_d,
+        scheduler_d,
+        train_loader,
     )
+    mel_transform = mel_transform.to(accelerator.device)
 
     for step, batch in enumerate(inf_loop(train_loader)):
         if step >= config.trainer_args.max_steps:
@@ -118,6 +147,7 @@ def main(config: DictConfig):
         real_mels = mel_transform(real_wavs)
 
         fake_wav = generator(real_mels)
+        fake_mels = mel_transform(fake_wav)
 
         # ======== Discriminator ========
         optimizer_d.zero_grad()
@@ -143,9 +173,14 @@ def main(config: DictConfig):
         d_loss = d_loss_mpd + d_loss_msd
         # d_loss.backward()
         accelerator.backward(d_loss)
-        accelerator.clip_grad_norm_(msd.parameters(), config.trainer_args.max_grad_norm)
-        accelerator.clip_grad_norm_(mpd.parameters(), config.trainer_args.max_grad_norm)
+        grad_norm_msd = accelerator.clip_grad_norm_(
+            msd.parameters(), config.trainer_args.max_grad_norm
+        )
+        grad_norm_mpd = accelerator.clip_grad_norm_(
+            mpd.parameters(), config.trainer_args.max_grad_norm
+        )
         optimizer_d.step()
+        scheduler_d.step()
 
         # ======== Generator ========
         optimizer_g.zero_grad()
@@ -162,13 +197,11 @@ def main(config: DictConfig):
             d_p_fake_features,
         ) = mpd(real_wavs.unsqueeze(1), fake_wav)
 
-        fake_mels = mel_transform(fake_wav)
-
         g_loss_msd = generator_loss(d_s_fake_predictions)
         g_loss_mpd = generator_loss(d_p_fake_predictions)
-        g_loss_feature_msd = feature_loss(d_s_real_features, d_s_fake_features)
-        g_loss_feature_mpd = feature_loss(d_p_real_features, d_p_fake_features)
-        g_loss_mel = mel_loss(fake_mels, real_mels) * 10
+        g_loss_feature_msd = feature_loss(d_s_real_features, d_s_fake_features) * 2
+        g_loss_feature_mpd = feature_loss(d_p_real_features, d_p_fake_features) * 2
+        g_loss_mel = mel_loss(real_mels, fake_mels) * 45
         g_loss = (
             g_loss_msd
             + g_loss_mpd
@@ -178,10 +211,19 @@ def main(config: DictConfig):
         )
         # g_loss.backward()
         accelerator.backward(g_loss)
-        accelerator.clip_grad_norm_(generator.parameters(), config.trainer_args.max_grad_norm)
+        grad_norm_g = accelerator.clip_grad_norm_(
+            generator.parameters(), config.trainer_args.max_grad_norm
+        )
         optimizer_g.step()
+        scheduler_g.step()
 
         if step % config.trainer_args.logging_steps == 0:
+            learning_rate_g = optimizer_g.param_groups[0]["lr"]
+            learning_rate_d = optimizer_d.param_groups[0]["lr"]
+
+            real_spectrogram_sample = real_mels[0].detach().cpu().unsqueeze(2).numpy()
+            fake_spectrogram_sample = fake_mels[0].detach().cpu().unsqueeze(2).numpy()
+
             accelerator.log(
                 {
                     "d_loss": d_loss,
@@ -193,6 +235,13 @@ def main(config: DictConfig):
                     "g_loss_mpd": g_loss_mpd,
                     "g_loss_feature_msd": g_loss_feature_msd,
                     "g_loss_feature_mpd": g_loss_feature_mpd,
+                    "grad_norm_mpd": grad_norm_mpd,
+                    "grad_norm_msd": grad_norm_msd,
+                    "grad_norm_g": grad_norm_g,
+                    "lr_g": learning_rate_g,
+                    "lr_d": learning_rate_d,
+                    "true_mel": wandb.Image(real_spectrogram_sample),
+                    "gen_mel": wandb.Image(fake_spectrogram_sample)
                 },
                 step=step,
             )
@@ -203,7 +252,9 @@ def main(config: DictConfig):
 
         if step % config.trainer_args.save_steps == 0 and step > 0:
             chkpt_dir = f"{config.trainer_args.output_dir}/checkpoints/step-{step}"
-            accelerator.save_model(generator, save_directory=chkpt_dir, safe_serialization=True)
+            accelerator.save_model(
+                generator, save_directory=chkpt_dir, safe_serialization=True
+            )
 
     accelerator.end_training()
 

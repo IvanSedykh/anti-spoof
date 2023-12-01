@@ -31,6 +31,7 @@ class LJSpeechDataset(LJSPEECH):
     ) -> None:
         # audio patch duraion in seconds rounded to 256
         self.num_frames = int(duration * self.SR // 256 * 256)
+        print(f"Dataset num_frames set to {self.num_frames}")
         super().__init__(root, url, folder_in_archive, download)
 
     def __getitem__(self, n: int) -> Tuple[Tensor, int, str, str]:

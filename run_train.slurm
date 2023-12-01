@@ -33,5 +33,4 @@ export HYDRA_FULL_ERROR=1
 #export CUDA_LAUNCH_BLOCKING=1
 
 srun \
-python train.py \
-    --config-name config_fastspeech2
+python train.py
