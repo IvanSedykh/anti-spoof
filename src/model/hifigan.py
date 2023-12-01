@@ -1,91 +1,53 @@
+from collections import namedtuple
 from dataclasses import dataclass
+from typing import NamedTuple
 from omegaconf import DictConfig
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from torch import Tensor
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
-from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
+from torch.nn.utils.parametrizations import weight_norm, spectral_norm
+from torch.nn.utils.parametrize import remove_parametrizations
 
-from .utils import init_weights, get_padding
 
 LRELU_SLOPE = 0.1
 
 
-class ResBlock1(torch.nn.Module):
-    def __init__(self, h, channels, kernel_size=3, dilation=(1, 3, 5)):
-        super(ResBlock1, self).__init__()
-        self.h = h
-        self.convs1 = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[0],
-                        padding=get_padding(kernel_size, dilation[0]),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[1],
-                        padding=get_padding(kernel_size, dilation[1]),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[2],
-                        padding=get_padding(kernel_size, dilation[2]),
-                    )
-                ),
-            ]
-        )
-        self.convs1.apply(init_weights)
+def init_weights(m, mean=0.0, std=0.01):
+    classname = m.__class__.__name__
+    if "Conv" in classname:
+        m.weight.data.normal_(mean, std)
 
-        self.convs2 = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-            ]
-        )
-        self.convs2.apply(init_weights)
+
+def get_padding(kernel_size, dilation=1):
+    return int((kernel_size * dilation - dilation) / 2)
+
+
+class ResBlock(nn.Module):
+    def __init__(self, num_channels: int, kernel_size: int = 3, dilations=(1, 3, 5)):
+        super().__init__()
+
+        convs1 = []
+        for dilration_rate in dilations:
+            convs1.append(
+                Conv1d(
+                    num_channels,
+                    num_channels,
+                    kernel_size,
+                    padding="same",
+                    dilation=dilration_rate,
+                )
+            )
+        self.convs1 = nn.ModuleList([weight_norm(c) for c in convs1])
+
+        convs2 = []
+        for _ in dilations:
+            convs2.append(
+                Conv1d(num_channels, num_channels, kernel_size, padding="same")
+            )
+        self.convs2 = nn.ModuleList([weight_norm(c) for c in convs2])
+        self.apply(init_weights)
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
@@ -98,231 +60,207 @@ class ResBlock1(torch.nn.Module):
 
     def remove_weight_norm(self):
         for l in self.convs1:
-            remove_weight_norm(l)
+            remove_parametrizations(l)
         for l in self.convs2:
-            remove_weight_norm(l)
+            remove_parametrizations(l)
 
-
-class ResBlock2(torch.nn.Module):
-    def __init__(self, h, channels, kernel_size=3, dilation=(1, 3)):
-        super(ResBlock2, self).__init__()
-        self.h = h
-        self.convs = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[0],
-                        padding=get_padding(kernel_size, dilation[0]),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[1],
-                        padding=get_padding(kernel_size, dilation[1]),
-                    )
-                ),
-            ]
-        )
-        self.convs.apply(init_weights)
-
-    def forward(self, x):
-        for c in self.convs:
-            xt = F.leaky_relu(x, LRELU_SLOPE)
-            xt = c(xt)
-            x = xt + x
-        return x
-
-    def remove_weight_norm(self):
-        for l in self.convs:
-            remove_weight_norm(l)
 
 @dataclass
 class GeneratorConfig:
     resblock_kernel_sizes: list[int]
-    upsample_rates: list[int]
+    # upsample_rates: list[int]
     upsample_initial_channel: int
     upsample_kernel_sizes: list[int]
     resblock_dilation_sizes: list[list[int]]
+    n_mels: int = 80
 
 
-class Generator(torch.nn.Module):
+class MRF(nn.Module):
+    """Stack of ResBlocks with different dilations, kernels"""
+
+    def __init__(
+        self,
+        num_channels: int,
+        kernel_sizes: list[int],
+        dilation_sizes: list[list[int]],
+    ):
+        super().__init__()
+        assert len(kernel_sizes) == len(dilation_sizes)
+        self.num_blocks = len(kernel_sizes)
+        self.blocks = nn.ModuleList()
+        for k, d in zip(kernel_sizes, dilation_sizes):
+            self.blocks.append(ResBlock(num_channels, k, d))
+
+    def forward(self, x: Tensor):
+        output = None
+        for block in self.blocks:
+            if output is None:
+                output = block(x)
+            else:
+                output += block(x)
+        output /= self.num_blocks
+        return output
+
+
+class Generator(nn.Module):
     def __init__(
         self,
         config: GeneratorConfig,
     ):
         super().__init__()
 
-        self.num_kernels = len(config.resblock_kernel_sizes)
-        self.num_upsamples = len(config.upsample_rates)
-        self.conv_pre = weight_norm(
-            Conv1d(80, config.upsample_initial_channel, 7, 1, padding=3)
+        self.init_conv = weight_norm(
+            Conv1d(config.n_mels, config.upsample_initial_channel, 7, 1, padding=3)
         )
-        resblock = ResBlock1
 
-        self.ups = nn.ModuleList()
-        for i, (u, k) in enumerate(zip(config.upsample_rates, config.upsample_kernel_sizes)):
-            self.ups.append(
-                weight_norm(
-                    ConvTranspose1d(
-                        config.upsample_initial_channel // (2**i),
-                        config.upsample_initial_channel // (2 ** (i + 1)),
-                        k,
-                        u,
-                        padding=(k - u) // 2,
-                    )
+        upsamplings = []
+        for i, kernel_size in enumerate(config.upsample_kernel_sizes):
+            stride = kernel_size // 2
+            in_channels = config.upsample_initial_channel // (2**i)
+            # each upsampling block reduce hidden size in half
+            upsamplings.append(
+                ConvTranspose1d(
+                    in_channels,
+                    in_channels // 2,
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding=(kernel_size - stride) // 2,
+                )
+            )
+        self.upsamplings = nn.ModuleList([weight_norm(up) for up in upsamplings])
+
+        self.mrfs = nn.ModuleList()
+        for i in range(len(self.upsamplings)):
+            num_channels = config.upsample_initial_channel // (2 ** (i + 1))
+            self.mrfs.append(
+                MRF(
+                    num_channels,
+                    config.resblock_kernel_sizes,
+                    config.resblock_dilation_sizes,
                 )
             )
 
-        self.resblocks = nn.ModuleList()
-        for i in range(len(self.ups)):
-            ch = config.upsample_initial_channel // (2 ** (i + 1))
-            for j, (k, d) in enumerate(
-                zip(config.resblock_kernel_sizes, config.resblock_dilation_sizes)
-            ):
-                self.resblocks.append(resblock(config, ch, k, d))
-
-        self.conv_post = weight_norm(Conv1d(ch, 1, 7, 1, padding=3))
-        self.ups.apply(init_weights)
-        self.conv_post.apply(init_weights)
+        self.out_conv = weight_norm(Conv1d(num_channels, 1, 7, 1, padding=3))
+        self.upsamplings.apply(init_weights)
+        self.out_conv.apply(init_weights)
 
     def forward(self, x):
-        x = self.conv_pre(x)
-        for i in range(self.num_upsamples):
+        # input [BS, n_mels, T]
+        x = self.init_conv(x)
+        for up, mrf in zip(self.upsamplings, self.mrfs):
             x = F.leaky_relu(x, LRELU_SLOPE)
-            x = self.ups[i](x)
-            xs = None
-            for j in range(self.num_kernels):
-                if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x)
-                else:
-                    xs += self.resblocks[i * self.num_kernels + j](x)
-            x = xs / self.num_kernels
+            x = up(x)
+            x = mrf(x)
         x = F.leaky_relu(x)
-        x = self.conv_post(x)
+        x = self.out_conv(x)
         x = torch.tanh(x)
 
+        # output [BS, 1, T']
         return x
 
     def remove_weight_norm(self):
         print("Removing weight norm...")
-        for l in self.ups:
-            remove_weight_norm(l)
+        for l in self.upsamplings:
+            remove_parametrizations(l)
         for l in self.resblocks:
             l.remove_weight_norm()
-        remove_weight_norm(self.conv_pre)
-        remove_weight_norm(self.conv_post)
+        remove_parametrizations(self.init_conv)
+        remove_parametrizations(self.out_conv)
 
 
-class DiscriminatorP(torch.nn.Module):
-    def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
+class SubDiscriminatorPeriod(nn.Module):
+    def __init__(self, period: int, kernel_size: int = 5, stride: int = 3):
         super().__init__()
         self.period = period
-        norm_f = weight_norm if use_spectral_norm == False else spectral_norm
-        self.convs = nn.ModuleList(
-            [
-                norm_f(
-                    Conv2d(
-                        1,
-                        32,
-                        (kernel_size, 1),
-                        (stride, 1),
-                        padding=(get_padding(5, 1), 0),
-                    )
-                ),
-                norm_f(
-                    Conv2d(
-                        32,
-                        128,
-                        (kernel_size, 1),
-                        (stride, 1),
-                        padding=(get_padding(5, 1), 0),
-                    )
-                ),
-                norm_f(
-                    Conv2d(
-                        128,
-                        512,
-                        (kernel_size, 1),
-                        (stride, 1),
-                        padding=(get_padding(5, 1), 0),
-                    )
-                ),
-                norm_f(
-                    Conv2d(
-                        512,
-                        1024,
-                        (kernel_size, 1),
-                        (stride, 1),
-                        padding=(get_padding(5, 1), 0),
-                    )
-                ),
-                norm_f(Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
-            ]
+
+        convs = []
+        in_channels = 1  # wav has 1 emb dim
+        for l in range(4):
+            out_channels = 2 ** (5 + l)
+            padding = get_padding(5, 1)
+            convs.append(
+                Conv2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=(kernel_size, 1),
+                    stride=(stride, 1),
+                    padding=(padding, 1),
+                )
+            )
+            in_channels = out_channels
+        convs.append(
+            Conv2d(out_channels, 1024, kernel_size=(kernel_size, 1), padding="same")
         )
-        self.conv_post = norm_f(Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
+        self.convs = nn.ModuleList([weight_norm(c) for c in convs])
+
+        self.out_conv = weight_norm(Conv2d(1024, 1, (3, 1), padding="same"))
+
+    def pad_reshape(self, x):
+        # [B, 1, T] -> [B, 1, T//p, p]
+        # todo: check, may be error
+
+        padding = self.period - x.shape[2] % self.period
+        x = F.pad(x, (0, padding), "reflect")
+        x = x.view(x.shape[0], 1, x.shape[2] // self.period, self.period)
+
+        return x
 
     def forward(self, x):
-        fmap = []
+        features = []
 
-        # 1d to 2d
-        b, c, t = x.shape
-        if t % self.period != 0:  # pad first
-            n_pad = self.period - (t % self.period)
-            x = F.pad(x, (0, n_pad), "reflect")
-            t = t + n_pad
-        x = x.view(b, c, t // self.period, self.period)
+        x = self.pad_reshape(x)
 
-        for l in self.convs:
-            x = l(x)
+        for conv in self.convs:
+            x = conv(x)
             x = F.leaky_relu(x, LRELU_SLOPE)
-            fmap.append(x)
-        x = self.conv_post(x)
-        fmap.append(x)
+            features.append(x)
+        x = self.out_conv(x)
+        features.append(x)
         x = torch.flatten(x, 1, -1)
 
-        return x, fmap
+        return x, features
 
 
-class MultiPeriodDiscriminator(torch.nn.Module):
+# DiscriminatorOutput = namedtuple('DiscriminatorOutput', ['real_predictions', 'fake_predictions'])
+class DiscriminatorOutput(NamedTuple):
+    real_predictions: list[Tensor]
+    fake_predictions: list[Tensor]
+    real_features: list[list[Tensor]]
+    fake_features: list[list[Tensor]]
+
+
+class MultiPeriodDiscriminator(nn.Module):
     def __init__(self):
-        super(MultiPeriodDiscriminator, self).__init__()
+        super().__init__()
         self.discriminators = nn.ModuleList(
             [
-                DiscriminatorP(2),
-                DiscriminatorP(3),
-                DiscriminatorP(5),
-                DiscriminatorP(7),
-                DiscriminatorP(11),
+                SubDiscriminatorPeriod(2),
+                SubDiscriminatorPeriod(3),
+                SubDiscriminatorPeriod(5),
+                SubDiscriminatorPeriod(7),
+                SubDiscriminatorPeriod(11),
             ]
         )
 
-    def forward(self, y, y_hat):
-        y_d_rs = []
-        y_d_gs = []
-        fmap_rs = []
-        fmap_gs = []
-        for i, d in enumerate(self.discriminators):
-            y_d_r, fmap_r = d(y)
-            y_d_g, fmap_g = d(y_hat)
-            y_d_rs.append(y_d_r)
-            fmap_rs.append(fmap_r)
-            y_d_gs.append(y_d_g)
-            fmap_gs.append(fmap_g)
+    def process_wav(self, wav):
+        preds = []
+        features = []
+        for subdisc in self.discriminators:
+            sub_pred, sub_features = subdisc(wav)
+            preds.append(sub_pred)
+            features.append(sub_features)
+        return preds, features
 
-        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+    def forward(self, real_wav, fake_wav) -> DiscriminatorOutput:
+        real_preds, real_features = self.process_wav(real_wav)
+        fake_preds, fake_features = self.process_wav(fake_wav)
+
+        return DiscriminatorOutput(real_preds, fake_preds, real_features, fake_features)
 
 
-class DiscriminatorS(torch.nn.Module):
+class SubDiscriminatorScale(nn.Module):
     def __init__(self, use_spectral_norm=False):
-        super(DiscriminatorS, self).__init__()
+        super().__init__()
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList(
             [
@@ -335,83 +273,47 @@ class DiscriminatorS(torch.nn.Module):
                 norm_f(Conv1d(1024, 1024, 5, 1, padding=2)),
             ]
         )
-        self.conv_post = norm_f(Conv1d(1024, 1, 3, 1, padding=1))
+        self.out_conv = norm_f(Conv1d(1024, 1, 3, 1, padding=1))
 
     def forward(self, x):
-        fmap = []
-        for l in self.convs:
-            x = l(x)
+        features = []
+        for conv in self.convs:
+            x = conv(x)
             x = F.leaky_relu(x, LRELU_SLOPE)
-            fmap.append(x)
-        x = self.conv_post(x)
-        fmap.append(x)
+            features.append(x)
+        x = self.out_conv(x)
+        features.append(x)
         x = torch.flatten(x, 1, -1)
 
-        return x, fmap
+        return x, features
 
 
-class MultiScaleDiscriminator(torch.nn.Module):
+class MultiScaleDiscriminator(nn.Module):
     def __init__(self):
-        super(MultiScaleDiscriminator, self).__init__()
+        super().__init__()
         self.discriminators = nn.ModuleList(
             [
-                DiscriminatorS(use_spectral_norm=True),
-                DiscriminatorS(),
-                DiscriminatorS(),
+                SubDiscriminatorScale(use_spectral_norm=True),
+                SubDiscriminatorScale(),
+                SubDiscriminatorScale(),
             ]
         )
         self.meanpools = nn.ModuleList(
-            [AvgPool1d(4, 2, padding=2), AvgPool1d(4, 2, padding=2)]
+            [nn.Identity(), AvgPool1d(4, 2, padding=2), AvgPool1d(4, 2, padding=2)]
         )
 
-    def forward(self, y, y_hat):
-        y_d_rs = []
-        y_d_gs = []
-        fmap_rs = []
-        fmap_gs = []
-        for i, d in enumerate(self.discriminators):
-            if i != 0:
-                y = self.meanpools[i - 1](y)
-                y_hat = self.meanpools[i - 1](y_hat)
-            y_d_r, fmap_r = d(y)
-            y_d_g, fmap_g = d(y_hat)
-            y_d_rs.append(y_d_r)
-            fmap_rs.append(fmap_r)
-            y_d_gs.append(y_d_g)
-            fmap_gs.append(fmap_g)
+    def process_wav(self, wav):
+        preds = []
+        features = []
+        for pool, subdisc in zip(self.meanpools, self.discriminators):
+            wav = pool(wav)
+            sub_pred, sub_features = subdisc(wav)
+            preds.append(sub_pred)
+            features.append(sub_features)
+        return preds, features
 
-        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+    def forward(self, real_wav, fake_wav) -> DiscriminatorOutput:
+        real_preds, real_features = self.process_wav(real_wav)
+        fake_preds, fake_features = self.process_wav(fake_wav)
 
-
-def feature_loss(fmap_r, fmap_g):
-    loss = 0
-    for dr, dg in zip(fmap_r, fmap_g):
-        for rl, gl in zip(dr, dg):
-            loss += torch.mean(torch.abs(rl - gl))
-
-    return loss * 2
-
-
-def discriminator_loss(disc_real_outputs, disc_generated_outputs):
-    loss = 0
-    r_losses = []
-    g_losses = []
-    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-        r_loss = torch.mean((1 - dr) ** 2)
-        g_loss = torch.mean(dg**2)
-        loss += r_loss + g_loss
-        r_losses.append(r_loss.item())
-        g_losses.append(g_loss.item())
-
-    return loss, r_losses, g_losses
-
-
-def generator_loss(disc_outputs):
-    loss = 0
-    gen_losses = []
-    for dg in disc_outputs:
-        l = torch.mean((1 - dg) ** 2)
-        gen_losses.append(l)
-        loss += l
-
-    return loss, gen_losses
+        return DiscriminatorOutput(real_preds, fake_preds, real_features, fake_features)
