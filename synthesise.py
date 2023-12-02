@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 from hydra import initialize, initialize_config_module, initialize_config_dir, compose
 import hydra
 from hydra.utils import get_original_cwd, to_absolute_path
@@ -10,93 +12,80 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf, DictConfig
 from safetensors.torch import load_file
 from scipy.io.wavfile import write
+import torchaudio
 
-from src.utils.text import text_to_sequence
+from src.model.hifigan import (
+    Generator,
+    GeneratorConfig,
+)
+from src.transforms.mel import MelSpectrogram
+
 
 load_dotenv()
 
 
-def synthesis(model, text, speed_control=1.0, pitch_control=1.0, energy_control=1.0):
-    text = np.array(text)
-    text = np.stack([text])
-    src_pos = np.array([i + 1 for i in range(text.shape[1])])
-    src_pos = np.stack([src_pos])
-    sequence = torch.from_numpy(text).long().cuda()
-    src_pos = torch.from_numpy(src_pos).long().cuda()
-
-    with torch.no_grad():
-        output = model(
-            sequence,
-            src_pos,
-            speed_control=speed_control,
-            pitch_control=pitch_control,
-            energy_control=energy_control,
-        )
-        mel = output["mel_output"]
-    return mel[0].cpu().transpose(0, 1), mel.contiguous().transpose(1, 2)
+def load_data(audio_dir: str) -> dict:
+    path = Path(audio_dir)
+    wavs = []
+    fnames = []
+    for wav_name in path.glob("*.wav"):
+        wav, sr = torchaudio.load(wav_name)
+        wavs.append(wav)
+        fnames.append(wav_name.name)
+    return {"wav": wavs, "fname": fnames}
 
 
-def get_data():
-    tests = [
-        "A defibrillator is a device that gives a high energy electric shock to the heart of someone who is in cardiac arrest",
-        "Massachusetts Institute of Technology may be best known for its math, science and engineering education",
-        "Wasserstein distance or Kantorovich Rubinstein metric is a distance function defined between probability distributions on a given metric space",
-        "Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition",
-    ]
-    data_list = list(text_to_sequence(test, ["english_cleaners"]) for test in tests)
+def load_checkpoint(generator: Generator, c_path: str):
+    state_dict = load_file(c_path, device="cuda")
+    generator.load_state_dict(state_dict)
+    generator.eval()
 
-    return data_list, tests
+
+def get_checkpoint_fnames(c_dir: Path):
+    return list(c_dir.rglob("*.safetensors"))
 
 
 @hydra.main(config_path="config", config_name="config")
 @torch.no_grad()
 def main(config: DictConfig):
-    model = hydra.utils.instantiate(config.model)
-    # todo: add to config
-    # checkpoint_path = to_absolute_path("outputs/2023-11-19/21-44-45/output/checkpoint-6000/model.safetensors")
-    checkpoint_path = to_absolute_path(config.checkpoint_path)
-    state_dict = load_file(checkpoint_path, device="cpu")
-    model.load_state_dict(state_dict)
-    model = model.cuda()
-    model.eval()
+    test_audio_dir = to_absolute_path(config.test_audio_dir)
 
-    waveglow = torch.hub.load(
-        "NVIDIA/DeepLearningExamples:torchhub", "nvidia_waveglow", model_math="fp32"
-    )
-    waveglow = waveglow.remove_weightnorm(waveglow)
-    waveglow = waveglow.to("cuda")
-    waveglow.eval()
+    data = load_data(test_audio_dir)
+
+    generator_config = GeneratorConfig(**config.generator_config)
+    generator = Generator(generator_config).cuda()
+    mel_transform = MelSpectrogram().cuda()
+
+    # scans all checkpoints in the subtree
+    checkpoint_dir = Path(to_absolute_path(config.checkpoint_dir))
+    model_c_fnames = get_checkpoint_fnames(checkpoint_dir)
 
     with wandb.init(config=OmegaConf.to_container(config)) as run:
         records = []
-        data_list, real_texts = get_data()
-        for speed in [0.8, 1.0, 1.2]:
-            for pitch in [0.8, 1.0, 1.2]:
-                for energy in [0.8, 1.0, 1.2]:
-                    os.makedirs("results", exist_ok=True)
-                    for i, text in enumerate(data_list):
-                        mel, mel_cuda = synthesis(
-                            model,
-                            text,
-                            speed_control=speed,
-                            pitch_control=pitch,
-                            energy_control=energy,
-                        )
-                        audio = waveglow.infer(mel_cuda)
-                        audio_numpy = audio[0].data.cpu().numpy()
 
-                        rate = 22050
-                        audio_out_path = f"results/audio_{i}_speed={speed}_pitch={pitch}_energy={energy}.wav"
-                        write(audio_out_path, rate, audio_numpy)
-                        records.append(
-                            {
-                                "text": real_texts[i],
-                                "speed": speed,
-                                "pitch": pitch,
-                                "energy": energy,
-                                "audio": wandb.Audio(audio_out_path),
-                            }
-                        )
+        os.makedirs("results", exist_ok=True)
+
+        for c_fname in model_c_fnames:
+            load_checkpoint(generator, c_fname)
+            step = str(c_fname.parent.name).split("-")[-1]
+
+            for i, real_wav in enumerate(data["wav"]):
+                mel = mel_transform(real_wav.reshape(1, -1).cuda())
+
+                generated_wav = generator(mel)
+
+                audio_numpy = generated_wav.reshape(-1).cpu().numpy()
+
+                rate = 22050
+                audio_out_path = f"results/generated_{data['fname'][i]}"
+                write(audio_out_path, rate, audio_numpy)
+                records.append(
+                    {
+                        "fname": data["fname"][i],
+                        "gen_audio": wandb.Audio(audio_out_path),
+                        "step": step,
+                    }
+                )
 
         run.log({"samples": wandb.Table(dataframe=pd.DataFrame.from_records(records))})
 

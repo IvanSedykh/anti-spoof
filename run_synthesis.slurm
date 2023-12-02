@@ -27,11 +27,14 @@ source /home/i.sedyh/miniconda3/bin/activate asr_env
 
 unset TMPDIR
 
-#CHECKPOINT_PATH=outputs/2023-11-19/21-44-45/output/checkpoint-192000/model.safetensors
-CHECKPOINT_PATH=outputs/2023-11-21/16-46-15/output/checkpoint-18000/model.safetensors
+#CHECKPOINT_PATH=outputs/2023-12-02/01-31-15/output/checkpoints/step-100000/model.safetensors
+
+# to use ALL CHECKPOINTS
+CHECKPOINT_DIR=outputs/2023-12-02/01-31-15/output/checkpoints/
 
 srun \
 python synthesise.py \
-    --config-name config_fastspeech2 \
-    +checkpoint_path=$CHECKPOINT_PATH
+    +test_audio_dir=test_data/audios \
+    +checkpoint_dir=$CHECKPOINT_DIR \
+    #+checkpoint_path=$CHECKPOINT_PATH \
 # hydra.job.chdir=False
