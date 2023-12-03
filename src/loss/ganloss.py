@@ -4,62 +4,27 @@ import torch.nn as nn
 
 
 class DiscriminatorLoss(nn.Module):
-    def __call__(self, disc_real_outputs, disc_generated_outputs):
+    def __call__(self, disc_real_preds, disc_fake_preds):
         loss = 0
-        for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-            r_loss = torch.mean((1 - dr) ** 2)
-            g_loss = torch.mean(dg**2)
+        for real_pred, fake_pred in zip(disc_real_preds, disc_fake_preds):
+            r_loss = torch.mean((1 - real_pred) ** 2)
+            g_loss = torch.mean(fake_pred**2)
             loss += r_loss + g_loss
         return loss
 
 
 class GeneratorLoss(nn.Module):
-    def __call__(self, disc_outputs):
+    def __call__(self, disc_fake_preds):
         loss = 0
-        for dg in disc_outputs:
-            l = torch.mean((1 - dg) ** 2)
-            loss += l
+        for fake_pred in disc_fake_preds:
+            loss += torch.mean((1 - fake_pred) ** 2)
         return loss
 
 
 class FeatureLoss(nn.Module):
-    def __call__(self, fmap_r, fmap_g):
+    def __call__(self, features_real, features_fake):
         loss = 0
-        for dr, dg in zip(fmap_r, fmap_g):
-            for rl, gl in zip(dr, dg):
-                loss += torch.mean(torch.abs(rl - gl))
-        return loss * 2
-
-
-def feature_loss(fmap_r, fmap_g):
-    loss = 0
-    for dr, dg in zip(fmap_r, fmap_g):
-        for rl, gl in zip(dr, dg):
-            loss += torch.mean(torch.abs(rl - gl))
-
-    return loss * 2
-
-
-def discriminator_loss(disc_real_outputs, disc_generated_outputs):
-    loss = 0
-    r_losses = []
-    g_losses = []
-    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-        r_loss = torch.mean((1 - dr) ** 2)
-        g_loss = torch.mean(dg**2)
-        loss += r_loss + g_loss
-        r_losses.append(r_loss.item())
-        g_losses.append(g_loss.item())
-
-    return loss, r_losses, g_losses
-
-
-def generator_loss(disc_outputs):
-    loss = 0
-    gen_losses = []
-    for dg in disc_outputs:
-        l = torch.mean((1 - dg) ** 2)
-        gen_losses.append(l)
-        loss += l
-
-    return loss, gen_losses
+        for f_real, f_fake in zip(features_real, features_fake):
+            for f_real_part, f_fake_part in zip(f_real, f_fake):
+                loss += F.l1_loss(f_real_part, f_fake_part)
+        return loss
