@@ -198,17 +198,21 @@ def main(config: DictConfig):
             d_p_fake_features,
         ) = mpd(real_wavs.unsqueeze(1), fake_wav)
 
+        # ADV loss
         g_loss_msd = generator_loss(d_s_fake_predictions)
         g_loss_mpd = generator_loss(d_p_fake_predictions)
-        g_loss_feature_msd = feature_loss(d_s_real_features, d_s_fake_features) * 2
-        g_loss_feature_mpd = feature_loss(d_p_real_features, d_p_fake_features) * 2
-        g_loss_mel = mel_loss(real_mels, fake_mels) * 45
+        g_adv_loss = g_loss_msd + g_loss_mpd
+        # feature loss
+        g_loss_feature_msd = feature_loss(d_s_real_features, d_s_fake_features)
+        g_loss_feature_mpd = feature_loss(d_p_real_features, d_p_fake_features)
+        g_feature_loss = g_loss_feature_mpd + g_loss_feature_msd
+        # mel loss
+        g_loss_mel = mel_loss(real_mels, fake_mels)
+        # todo: parametrize weights with config
         g_loss = (
-            g_loss_msd
-            + g_loss_mpd
-            + g_loss_feature_msd
-            + g_loss_feature_mpd
-            + g_loss_mel
+            g_adv_loss
+            + 2 * g_feature_loss
+            + 45 * g_loss_mel
         )
         # g_loss.backward()
         accelerator.backward(g_loss)
@@ -226,6 +230,8 @@ def main(config: DictConfig):
             fake_spectrogram_sample = fake_mels[0].detach().cpu().unsqueeze(2).numpy()
             real_wav_sample = real_wavs[0].cpu().numpy()
             fake_wav_sample = fake_wav[0].detach().cpu().squeeze().numpy()
+
+            # todo: log 3 test audio
 
             accelerator.log(
                 {

@@ -66,6 +66,7 @@ def main(config: DictConfig):
         os.makedirs("results", exist_ok=True)
 
         for c_fname in model_c_fnames:
+            print(f"{c_fname=}")
             load_checkpoint(generator, c_fname)
             step = str(c_fname.parent.name).split("-")[-1]
 
@@ -77,7 +78,7 @@ def main(config: DictConfig):
                 audio_numpy = generated_wav.reshape(-1).cpu().numpy()
 
                 rate = 22050
-                audio_out_path = f"results/generated_{data['fname'][i]}"
+                audio_out_path = f"results/generated_step={step}_{data['fname'][i]}"
                 write(audio_out_path, rate, audio_numpy)
                 records.append(
                     {

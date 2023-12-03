@@ -20,55 +20,41 @@ def init_weights(m, mean=0.0, std=0.01):
         m.weight.data.normal_(mean, std)
 
 
-def get_padding(kernel_size, dilation=1):
-    return int((kernel_size * dilation - dilation) / 2)
-
-
 class ResBlock(nn.Module):
     def __init__(self, num_channels: int, kernel_size: int = 3, dilations=(1, 3, 5)):
         super().__init__()
 
-        convs1 = []
+        self.blocks = nn.ModuleList()
         for dilration_rate in dilations:
-            convs1.append(
-                Conv1d(
-                    num_channels,
-                    num_channels,
-                    kernel_size,
-                    padding="same",
-                    dilation=dilration_rate,
-                )
+            block = nn.Sequential(
+                nn.LeakyReLU(LRELU_SLOPE),
+                weight_norm(
+                    Conv1d(
+                        num_channels,
+                        num_channels,
+                        kernel_size,
+                        padding="same",
+                        dilation=dilration_rate,
+                    )
+                ),
+                nn.LeakyReLU(LRELU_SLOPE),
+                weight_norm(
+                    Conv1d(num_channels, num_channels, kernel_size, padding="same")
+                ),
             )
-        self.convs1 = nn.ModuleList([weight_norm(c) for c in convs1])
+            self.blocks.append(block)
 
-        convs2 = []
-        for _ in dilations:
-            convs2.append(
-                Conv1d(num_channels, num_channels, kernel_size, padding="same")
-            )
-        self.convs2 = nn.ModuleList([weight_norm(c) for c in convs2])
         self.apply(init_weights)
 
     def forward(self, x):
-        for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.leaky_relu(x, LRELU_SLOPE)
-            xt = c1(xt)
-            xt = F.leaky_relu(xt, LRELU_SLOPE)
-            xt = c2(xt)
-            x = xt + x
+        for block in self.blocks:
+            x = x + block(x)
         return x
-
-    def remove_weight_norm(self):
-        for l in self.convs1:
-            remove_parametrizations(l)
-        for l in self.convs2:
-            remove_parametrizations(l)
 
 
 @dataclass
 class GeneratorConfig:
     resblock_kernel_sizes: list[int]
-    # upsample_rates: list[int]
     upsample_initial_channel: int
     upsample_kernel_sizes: list[int]
     resblock_dilation_sizes: list[list[int]]
@@ -113,12 +99,26 @@ class Generator(nn.Module):
             Conv1d(config.n_mels, config.upsample_initial_channel, 7, 1, padding=3)
         )
 
-        upsamplings = []
+        blocks = []
+
         for i, kernel_size in enumerate(config.upsample_kernel_sizes):
-            stride = kernel_size // 2
             in_channels = config.upsample_initial_channel // (2**i)
-            # each upsampling block reduce hidden size in half
-            upsamplings.append(
+            blocks.append(self.make_gen_block(config, kernel_size, in_channels))
+
+        self.blocks = nn.Sequential(*blocks)
+
+        self.out_conv = weight_norm(Conv1d(in_channels // 2, 1, 7, 1, padding=3))
+        self.out_conv.apply(init_weights)
+
+    def make_gen_block(
+        self, config: GeneratorConfig, kernel_size: int, in_channels: int
+    ) -> nn.Sequential:
+        # lrelu + ups + MRF
+        stride = kernel_size // 2
+        block = []
+        block.append(nn.LeakyReLU(LRELU_SLOPE))
+        block.append(
+            weight_norm(
                 ConvTranspose1d(
                     in_channels,
                     in_channels // 2,
@@ -127,30 +127,20 @@ class Generator(nn.Module):
                     padding=(kernel_size - stride) // 2,
                 )
             )
-        self.upsamplings = nn.ModuleList([weight_norm(up) for up in upsamplings])
-
-        self.mrfs = nn.ModuleList()
-        for i in range(len(self.upsamplings)):
-            num_channels = config.upsample_initial_channel // (2 ** (i + 1))
-            self.mrfs.append(
-                MRF(
-                    num_channels,
-                    config.resblock_kernel_sizes,
-                    config.resblock_dilation_sizes,
-                )
+        )
+        block.append(
+            MRF(
+                in_channels // 2,
+                config.resblock_kernel_sizes,
+                config.resblock_dilation_sizes,
             )
-
-        self.out_conv = weight_norm(Conv1d(num_channels, 1, 7, 1, padding=3))
-        self.upsamplings.apply(init_weights)
-        self.out_conv.apply(init_weights)
+        )
+        return nn.Sequential(*block)
 
     def forward(self, x):
         # input [BS, n_mels, T]
         x = self.init_conv(x)
-        for up, mrf in zip(self.upsamplings, self.mrfs):
-            x = F.leaky_relu(x, LRELU_SLOPE)
-            x = up(x)
-            x = mrf(x)
+        x = self.blocks(x)
         x = F.leaky_relu(x)
         x = self.out_conv(x)
         x = torch.tanh(x)
@@ -158,14 +148,9 @@ class Generator(nn.Module):
         # output [BS, 1, T']
         return x
 
-    def remove_weight_norm(self):
-        print("Removing weight norm...")
-        for l in self.upsamplings:
-            remove_parametrizations(l)
-        for l in self.resblocks:
-            l.remove_weight_norm()
-        remove_parametrizations(self.init_conv)
-        remove_parametrizations(self.out_conv)
+
+def get_padding(kernel_size, dilation=1):
+    return int((kernel_size * dilation - dilation) / 2)
 
 
 class SubDiscriminatorPeriod(nn.Module):
@@ -258,6 +243,7 @@ class MultiPeriodDiscriminator(nn.Module):
         return DiscriminatorOutput(real_preds, fake_preds, real_features, fake_features)
 
 
+# modified from reference implementation
 class SubDiscriminatorScale(nn.Module):
     def __init__(self, use_spectral_norm=False):
         super().__init__()

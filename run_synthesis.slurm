@@ -30,7 +30,11 @@ unset TMPDIR
 #CHECKPOINT_PATH=outputs/2023-12-02/01-31-15/output/checkpoints/step-100000/model.safetensors
 
 # to use ALL CHECKPOINTS
-CHECKPOINT_DIR=outputs/2023-12-02/01-31-15/output/checkpoints/
+#CHECKPOINT_DIR=outputs/2023-12-02/01-31-15/output/checkpoints/
+CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints
+
+# to use specific one
+#CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints/step-190000
 
 srun \
 python synthesise.py \
