@@ -35,10 +35,11 @@ CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints
 
 # to use specific one
 #CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints/step-190000
+# or 
+#CHECKPOINT_DIR=checkpoints/step-190000/model.safetensors
 
 srun \
 python synthesise.py \
     +test_audio_dir=test_data/audios \
     +checkpoint_dir=$CHECKPOINT_DIR \
-    #+checkpoint_path=$CHECKPOINT_PATH \
 # hydra.job.chdir=False
