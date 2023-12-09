@@ -6,8 +6,6 @@ from hydra.utils import instantiate
 from hydra.utils import to_absolute_path
 
 
-import src.datasets
-from src.collate_fn.collate import make_collate_fn_tensor
 
 
 def get_datasets(config: DictConfig) -> dict[str, Dataset]:
@@ -17,7 +15,7 @@ def get_datasets(config: DictConfig) -> dict[str, Dataset]:
         datasets = []
         for ds in params["datasets"]:
             # change root path to absolute path
-            ds["root"] = to_absolute_path(ds["root"])
+            ds["data_path"] = to_absolute_path(ds["data_path"])
             datasets.append(instantiate(ds))
         assert len(datasets)
         if len(datasets) > 1:

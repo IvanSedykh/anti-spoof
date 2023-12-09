@@ -1,6 +1,5 @@
 #download LjSpeech
-wget https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2 -o /dev/null
 mkdir data
-tar -xvf LJSpeech-1.1.tar.bz2 >> /dev/null
-mv LJSpeech-1.1 data/LJSpeech-1.1
-rm LJSpeech-1.1.tar.bz2
+# wget https://datashare.ed.ac.uk/bitstream/handle/10283/3336/LA.zip
+# download from kaggle
+# https://www.kaggle.com/datasets/awsaf49/asvpoof-2019-dataset?select=LA

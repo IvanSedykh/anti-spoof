@@ -31,3 +31,4 @@ lovely-tensors
 hydra-core
 inflect
 pyworld
+kaggle
