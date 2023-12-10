@@ -94,7 +94,7 @@ def main(config: DictConfig):
 
     # setup accelerator
     accelerator = Accelerator(log_with="wandb", step_scheduler_with_optimizer=False)
-    accelerator.init_trackers("nv_dla", config=OmegaConf.to_container(config))
+    accelerator.init_trackers("as_dla", config=OmegaConf.to_container(config))
     (
         model,
         optimizer,
@@ -108,6 +108,7 @@ def main(config: DictConfig):
         train_loader,
         eval_loader,
     )
+    loss_fn = loss_fn.to(accelerator.device)
 
     for step, batch in enumerate(inf_loop(train_loader)):
         if step >= config.trainer_args.max_steps:
@@ -136,7 +137,7 @@ def main(config: DictConfig):
             model.eval()
             bonafide_scores = []
             spoof_scores = []
-            with torch.no_grad():
+            with torch.inference_mode():
                 val_loss = 0
                 for val_step, val_batch in enumerate(eval_loader):
                     wav = val_batch["wav"].unsqueeze(1)

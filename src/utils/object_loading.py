@@ -25,5 +25,6 @@ def get_datasets(config: DictConfig) -> dict[str, Dataset]:
 
         if hasattr(params, "limit"):
             dataset = Subset(dataset, range(params.limit))
+        print(f"dataset {split} length = {len(dataset)}")
         datasets_dict[split] = dataset
     return datasets_dict

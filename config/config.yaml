@@ -4,16 +4,16 @@ data:
       - _target_: src.datasets.ASV_Dataset
         data_path: "./data/LA"
         split: "train"
-    limit: 8
-    batch_size: 8
+    # limit: 32
+    batch_size: 32
     num_workers: 4
   eval:
     datasets:
       - _target_: src.datasets.ASV_Dataset
         data_path: "./data/LA"
         split: "eval"
-    batch_size: 8
-    limit: 32
+    batch_size: 64
+    # limit: 64
     num_workers: 4
 
 model:
@@ -25,13 +25,13 @@ optimizer:
     - 0.8
     - 0.98
   eps: 1e-09
-  weight_decay: 1e-3
+  weight_decay: 1e-4
 
 trainer_args:
   output_dir: "./output"
   max_steps: 200000
-  max_grad_norm: 10.0
-  warmup_steps: 10
-  eval_steps: 10000
-  logging_steps: 1
-  save_steps: 10000
+  max_grad_norm: 2.0
+  warmup_steps: 1000
+  eval_steps: 5000
+  logging_steps: 50
+  save_steps: 5000
