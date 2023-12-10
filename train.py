@@ -21,6 +21,7 @@ from src.model.rawnet import RawNet
 from src.utils import prepare_device, count_params, inf_loop
 from src.utils.object_loading import get_datasets
 from src.collate_fn.collate import collate_fn
+from src.metric.eer import compute_eer
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -57,6 +58,16 @@ def main(config: DictConfig):
         drop_last=True,
     )
 
+    eval_loader = DataLoader(
+        datasets["eval"],
+        batch_size=config.data.eval.batch_size,
+        shuffle=False,
+        num_workers=config.data.eval.num_workers,
+        collate_fn=collate_fn,
+        pin_memory=True,
+        drop_last=False,
+    )
+
     model = RawNet(channels_list=config.model.channels_list)
     model.train()
     logger.info(model)
@@ -64,7 +75,7 @@ def main(config: DictConfig):
 
 
     # setup losses
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 9.0]))
 
     # setup optimizer
     optimizer = torch.optim.AdamW(
@@ -89,11 +100,13 @@ def main(config: DictConfig):
         optimizer,
         scheduler,
         train_loader,
+        eval_loader,
     ) = accelerator.prepare(
         model,
         optimizer,
         scheduler,
         train_loader,
+        eval_loader,
     )
 
     for step, batch in enumerate(inf_loop(train_loader)):
@@ -118,6 +131,42 @@ def main(config: DictConfig):
         scheduler.step()
 
 
+        # ======== eval ========
+        if step % config.trainer_args.eval_steps == 0 and step > 0:
+            model.eval()
+            bonafide_scores = []
+            spoof_scores = []
+            with torch.no_grad():
+                val_loss = 0
+                for val_step, val_batch in enumerate(eval_loader):
+                    wav = val_batch["wav"].unsqueeze(1)
+                    label = val_batch["label"]
+
+                    logits = model(wav)
+                    loss = loss_fn(logits, label)
+                    val_loss += loss.item()
+                    scores = torch.softmax(logits, dim=1)[:, 1]
+                    # gather predictions
+                    bonafide_scores.extend(scores[label == 1].tolist())
+                    spoof_scores.extend(scores[label == 0].tolist())
+
+                val_loss /= (val_step + 1)
+
+                # compute eer
+                bonafide_scores = np.array(bonafide_scores)
+                spoof_scores = np.array(spoof_scores)
+                eer, treshold = compute_eer(bonafide_scores, spoof_scores)
+
+                accelerator.log({
+                    "val_loss": val_loss,
+                    "eer": eer,
+                    }, step=step)
+                logger.info(f"step: {step}, val_loss: {val_loss}, eer: {eer}")
+
+            model.train()
+
+
+        # ======== log ========
         if step % config.trainer_args.logging_steps == 0:
             learning_rate = optimizer.param_groups[0]["lr"]
             accelerator.log(

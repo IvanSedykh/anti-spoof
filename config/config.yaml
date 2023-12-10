@@ -7,6 +7,14 @@ data:
     limit: 8
     batch_size: 8
     num_workers: 4
+  eval:
+    datasets:
+      - _target_: src.datasets.ASV_Dataset
+        data_path: "./data/LA"
+        split: "eval"
+    batch_size: 8
+    limit: 32
+    num_workers: 4
 
 model:
   channels_list: [128, 128, 512, 512, 512, 512]
@@ -24,5 +32,6 @@ trainer_args:
   max_steps: 200000
   max_grad_norm: 10.0
   warmup_steps: 10
+  eval_steps: 10000
   logging_steps: 1
   save_steps: 10000
