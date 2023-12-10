@@ -96,6 +96,7 @@ class ResBlock(nn.Module):
         # x: (bs, out_channels, num_frames//3)
         return x
 
+
 class TransformerAggregation(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
@@ -121,6 +122,27 @@ class TransformerAggregation(nn.Module):
         # x: (bs, channels)
         return x
 
+
+class GRUAggregation(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.gru = nn.GRU(
+            channels,
+            channels,
+            batch_first=True,
+            num_layers=3,
+            bidirectional=True,
+            dropout=0.1,
+        )
+
+    def forward(self, x):
+        # x: (bs, num_frames, channels)
+        x, _ = self.gru(x)
+        x = x[:, -1, :]
+        # x: (bs, channels)
+        return x
+
+
 class RawNet(nn.Module):
     def __init__(self, channels_list: list[int], num_classes: int = 2) -> None:
         super().__init__()
@@ -133,10 +155,10 @@ class RawNet(nn.Module):
         for in_channels, out_channels in zip(channels_list[:-1], channels_list[1:]):
             self.resblocks.append(ResBlock(in_channels, out_channels))
 
+        # self.aggregation = TransformerAggregation(channels_list[-1])
+        self.aggregation = GRUAggregation(channels_list[-1])
 
-        self.aggregation = TransformerAggregation(channels_list[-1])
-
-        self.fc = nn.Linear(channels_list[-1], num_classes)
+        self.fc = nn.Linear(channels_list[-1] * 2, num_classes)
 
     def forward(self, x):
         # x: (bs, 1, 64000)
