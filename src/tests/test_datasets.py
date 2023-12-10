@@ -23,6 +23,7 @@ def test_dataset():
     assert 'label' in item
 
     print_dict_shape(item)
+    assert item['wav'].shape[0] == ASV_Dataset.MAX_FRAMES
 
 def test_dataloader():
     dataset = ASV_Dataset(ROOT_PATH / "data" / "LA", "dev")

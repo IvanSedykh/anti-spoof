@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Tuple, Union
 from torch import Tensor
 import torch
+from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torchaudio import load
 import numpy as np
@@ -51,6 +52,12 @@ class ASV_Dataset(Dataset):
         label = item['label']
         # take first channel, first 64000 frames
         wav = wav[0, :ASV_Dataset.MAX_FRAMES]
+        # circular pad if neccessary
+        pad_len = ASV_Dataset.MAX_FRAMES - wav.size(0)
+        # wav = F.pad(wav.view(1, -1), (0, pad_len), mode='circular').squeeze(0)
+        wav = np.pad(wav.numpy(), (0, pad_len), mode='wrap')
+        wav = torch.from_numpy(wav)
+
 
         return {
             'wav': wav,
