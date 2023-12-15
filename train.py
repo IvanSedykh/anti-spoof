@@ -188,6 +188,12 @@ def main(config: DictConfig):
             accelerator.save_model(
                 model, save_directory=chkpt_dir, safe_serialization=True
             )
+            unwrapped_model = accelerator.unwrap_model(model)
+            # save state dict
+            torch.save(
+                unwrapped_model.state_dict(),
+                f"{chkpt_dir}/state_dict.pth",
+            )
 
     accelerator.end_training()
 
