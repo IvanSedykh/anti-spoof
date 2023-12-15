@@ -17,7 +17,9 @@ data:
     num_workers: 4
 
 model:
-  channels_list: [128, 128, 512, 512, 512, 512]
+  channels_list: [20, 20, 128, 128, 128, 128, 128]
+  agg_hidden_size: 512
+  num_classes: 2
 
 optimizer:
   lr: 2e-4
@@ -29,7 +31,7 @@ optimizer:
 
 trainer_args:
   output_dir: "./output"
-  max_steps: 200000
+  max_steps: 50000
   max_grad_norm: 2.0
   warmup_steps: 1000
   eval_steps: 5000
