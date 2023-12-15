@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 # fix random seeds for reproducibility
-SEED = 0xDEADBEEF
+SEED = 0xDEADBEF
 torch.manual_seed(SEED)
 # let's go fast boi
 torch.backends.cudnn.benchmark = True
@@ -68,7 +68,7 @@ def main(config: DictConfig):
         drop_last=False,
     )
 
-    model = RawNet(channels_list=config.model.channels_list)
+    model = RawNet(**config.model)
     model.train()
     logger.info(model)
     print(f"# parameters: {count_params(model)}")

@@ -4,16 +4,15 @@ import torch.nn.functional as F
 
 from src.model.modules import SincConv_fast
 
-LRELU_SLOPE = 0.1
+LRELU_SLOPE = 0.3
 
 
 class InputLayer(nn.Module):
-    def __init__(self):
+    def __init__(self, out_channels: int = 128, kernel_size: int = 1024):
         super().__init__()
-        out_channels = 128
         self.sincconv = SincConv_fast(
             out_channels=out_channels,
-            kernel_size=129,
+            kernel_size=kernel_size,
             sample_rate=16000,
             min_low_hz=0,
             min_band_hz=0,
@@ -38,16 +37,22 @@ class FMS(nn.Module):
         self.fc = nn.Linear(num_channels, num_channels)
 
     def forward(self, x):
-        # x: (bs, num_channels, num_frames)
-        # global avg pool over frames
-        s = x.mean(dim=2)
-        # s: (bs, num_channels)
-        s = F.sigmoid(self.fc(s))
-        # s: (bs, num_channels)
-        x = x * s.unsqueeze(2)
-        x = x + s.unsqueeze(2)
-        # x: (bs, num_channels, num_frames)
+        s = F.adaptive_avg_pool1d(x, 1).view(x.size(0), -1)
+        s = F.sigmoid(self.fc(s)).view(x.size(0), x.size(1), -1)
+        x = x * s
+        x = x + s
         return x
+
+        # # x: (bs, num_channels, num_frames)
+        # # global avg pool over frames
+        # s = x.mean(dim=2)
+        # # s: (bs, num_channels)
+        # s = F.sigmoid(self.fc(s))
+        # # s: (bs, num_channels)
+        # x = x * s.unsqueeze(2)
+        # x = x + s.unsqueeze(2)
+        # # x: (bs, num_channels, num_frames)
+        # return x
 
 
 class ResBlock(nn.Module):
@@ -71,8 +76,8 @@ class ResBlock(nn.Module):
                 in_channels, out_channels, kernel_size=1, padding="same"
             )
             # init weights
-            nn.init.dirac_(self.downsample.weight)
-            nn.init.zeros_(self.downsample.bias)
+            # nn.init.dirac_(self.downsample.weight)
+            # nn.init.zeros_(self.downsample.bias)
         else:
             self.downsample = nn.Identity()
 
@@ -124,14 +129,14 @@ class TransformerAggregation(nn.Module):
 
 
 class GRUAggregation(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self, channels: int, out_channels: int):
         super().__init__()
         self.gru = nn.GRU(
             channels,
-            channels,
+            out_channels,
             batch_first=True,
             num_layers=3,
-            bidirectional=True,
+            bidirectional=False,
             dropout=0.1,
         )
 
@@ -144,21 +149,21 @@ class GRUAggregation(nn.Module):
 
 
 class RawNet(nn.Module):
-    def __init__(self, channels_list: list[int], num_classes: int = 2) -> None:
+    def __init__(self, channels_list: list[int], agg_hidden_size: int, num_classes: int = 2, **kwargs) -> None:
         super().__init__()
         self.channels_list = channels_list
         self.num_classes = num_classes
 
-        self.input_layer = InputLayer()
+        self.input_layer = InputLayer(out_channels=channels_list[0])
 
         self.resblocks = nn.ModuleList()
         for in_channels, out_channels in zip(channels_list[:-1], channels_list[1:]):
             self.resblocks.append(ResBlock(in_channels, out_channels))
 
         # self.aggregation = TransformerAggregation(channels_list[-1])
-        self.aggregation = GRUAggregation(channels_list[-1])
+        self.aggregation = GRUAggregation(channels_list[-1], agg_hidden_size)
 
-        self.fc = nn.Linear(channels_list[-1] * 2, num_classes)
+        self.fc = nn.Linear(agg_hidden_size, num_classes)
 
     def forward(self, x):
         # x: (bs, 1, 64000)
@@ -167,9 +172,8 @@ class RawNet(nn.Module):
         # x: (bs, 128, 21290)
         for resblock in self.resblocks:
             x = resblock(x)
-        # x: (bs, 512, 7096)
         emb = self.aggregation(x.transpose(1, 2))
-        # emb: (bs, 512)
+        # emb: (bs, agg_hidden_size)
         logits = self.fc(emb)
         # logits: (bs, num_classes)
         return logits
