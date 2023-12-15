@@ -5,11 +5,13 @@ import torch
 from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torchaudio import load
+import torchaudio
 import numpy as np
 
 
 class ASV_Dataset(Dataset):
     MAX_FRAMES = 64000
+    SR = 16000
 
     def __init__(self, data_path: str, split: str) -> None:
         """_summary_
@@ -45,11 +47,12 @@ class ASV_Dataset(Dataset):
                 'audio_id': audio_id,
             })
 
-
-    def __getitem__(self, index: Any) -> Any:
-        item = self.items[index]
-        wav, sr = load(item['audio_file'])
-        label = item['label']
+    @staticmethod
+    def prepare_wav(wav, sr: int):
+        # wav: [channels, T]
+        # resample to 16k if necessary
+        if sr != ASV_Dataset.SR:
+            wav = torchaudio.functional.resample(wav, sr, ASV_Dataset.SR)
         # take first channel, first 64000 frames
         wav = wav[0, :ASV_Dataset.MAX_FRAMES]
         # circular pad if neccessary
@@ -57,6 +60,14 @@ class ASV_Dataset(Dataset):
         # wav = F.pad(wav.view(1, -1), (0, pad_len), mode='circular').squeeze(0)
         wav = np.pad(wav.numpy(), (0, pad_len), mode='wrap')
         wav = torch.from_numpy(wav)
+        return wav
+
+
+    def __getitem__(self, index: Any) -> Any:
+        item = self.items[index]
+        wav, sr = load(item['audio_file'])
+        label = item['label']
+        wav = ASV_Dataset.prepare_wav(wav, sr)
 
 
         return {

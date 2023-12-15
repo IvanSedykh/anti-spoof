@@ -14,11 +14,8 @@ from safetensors.torch import load_file
 from scipy.io.wavfile import write
 import torchaudio
 
-from src.model.hifigan import (
-    Generator,
-    GeneratorConfig,
-)
-from src.transforms.mel import MelSpectrogram
+from src.model.rawnet import RawNet
+from src.datasets.asvspoof_dataset import ASV_Dataset
 
 
 load_dotenv()
@@ -28,17 +25,27 @@ def load_data(audio_dir: str) -> dict:
     path = Path(audio_dir)
     wavs = []
     fnames = []
+    sample_rates = []
+    # glob wav and flac
     for wav_name in path.glob("*.wav"):
         wav, sr = torchaudio.load(wav_name)
+        wav = ASV_Dataset.prepare_wav(wav, sr)
         wavs.append(wav)
         fnames.append(wav_name.name)
-    return {"wav": wavs, "fname": fnames}
+        sample_rates.append(sr)
+    for flac_name in path.glob("*.flac"):
+        wav, sr = torchaudio.load(flac_name)
+        wav = ASV_Dataset.prepare_wav(wav, sr)
+        wavs.append(wav)
+        fnames.append(flac_name.name)
+        sample_rates.append(sr)
+    return {"wav": wavs, "fname": fnames, "sr": sample_rates}
 
 
-def load_checkpoint(generator: Generator, c_path: str):
+def load_checkpoint(model: RawNet, c_path: str):
     state_dict = load_file(c_path, device="cuda")
-    generator.load_state_dict(state_dict)
-    generator.eval()
+    model.load_state_dict(state_dict)
+    model.eval()
 
 
 def get_checkpoint_fnames(c_dir: Path):
@@ -52,9 +59,7 @@ def main(config: DictConfig):
 
     data = load_data(test_audio_dir)
 
-    generator_config = GeneratorConfig(**config.generator_config)
-    generator = Generator(generator_config).cuda()
-    mel_transform = MelSpectrogram().cuda()
+    model = RawNet(**config.model).cuda()
 
     # scans all checkpoints in the subtree
     checkpoint_dir = Path(to_absolute_path(config.checkpoint_dir))
@@ -67,24 +72,23 @@ def main(config: DictConfig):
 
         for c_fname in model_c_fnames:
             print(f"{c_fname=}")
-            load_checkpoint(generator, c_fname)
-            step = str(c_fname.parent.name).split("-")[-1]
+            load_checkpoint(model, c_fname)
 
-            for i, real_wav in enumerate(data["wav"]):
-                mel = mel_transform(real_wav.reshape(1, -1).cuda())
+            for i, (wav, sr) in enumerate(zip(data["wav"], data["sr"])):
+                wav = ASV_Dataset.prepare_wav(wav, sr).reshape(1, 1, -1).cuda()
 
-                generated_wav = generator(mel)
+                logits = model(wav)
 
-                audio_numpy = generated_wav.reshape(-1).cpu().numpy()
+                # softmax
+                probs = torch.softmax(logits, dim=1)
+                # get bonafide probability
+                prob = probs[0, 1].item()
 
-                rate = 22050
-                audio_out_path = f"results/generated_step={step}_{data['fname'][i]}"
-                write(audio_out_path, rate, audio_numpy)
                 records.append(
                     {
                         "fname": data["fname"][i],
-                        "gen_audio": wandb.Audio(audio_out_path),
-                        "step": step,
+                        "audio": wandb.Audio(wav.cpu().numpy(), sample_rate=sr),
+                        "bonafide_prob": prob,
                     }
                 )
 
