@@ -149,10 +149,18 @@ class GRUAggregation(nn.Module):
 
 
 class RawNet(nn.Module):
-    def __init__(self, channels_list: list[int], agg_hidden_size: int, num_classes: int = 2, **kwargs) -> None:
+    def __init__(
+        self,
+        channels_list: list[int],
+        agg_hidden_size: int,
+        input_abs: bool = True,
+        num_classes: int = 2,
+        **kwargs
+    ) -> None:
         super().__init__()
         self.channels_list = channels_list
         self.num_classes = num_classes
+        self.input_abs = input_abs
 
         self.input_layer = InputLayer(out_channels=channels_list[0])
 
@@ -168,7 +176,8 @@ class RawNet(nn.Module):
     def forward(self, x):
         # x: (bs, 1, 64000)
         x = self.input_layer(x)
-        x = torch.abs(x)
+        if self.input_abs:
+            x = torch.abs(x)
         # x: (bs, 128, 21290)
         for resblock in self.resblocks:
             x = resblock(x)

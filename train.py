@@ -75,7 +75,7 @@ def main(config: DictConfig):
 
 
     # setup losses
-    loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 9.0]))
+    loss_fn = nn.CrossEntropyLoss(weight=torch.tensor(config.loss.weights))
 
     # setup optimizer
     optimizer = torch.optim.AdamW(
