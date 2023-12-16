@@ -27,19 +27,17 @@ source /home/i.sedyh/miniconda3/bin/activate asr_env
 
 unset TMPDIR
 
-#CHECKPOINT_PATH=outputs/2023-12-02/01-31-15/output/checkpoints/step-100000/model.safetensors
 
 # to use ALL CHECKPOINTS
-#CHECKPOINT_DIR=outputs/2023-12-02/01-31-15/output/checkpoints/
-CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints
+#CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints
 
 # to use specific one
-#CHECKPOINT_DIR=outputs/2023-12-02/22-08-10/output/checkpoints/step-190000
+CHECKPOINT_DIR=outputs/2023-12-15/18-16-43/output/checkpoints/step-30000
 # or 
 #CHECKPOINT_DIR=checkpoints/step-190000/model.safetensors
 
 srun \
 python synthesise.py \
-    +test_audio_dir=test_data/audios \
+    +test_audio_dir=test_data \
     +checkpoint_dir=$CHECKPOINT_DIR \
 # hydra.job.chdir=False

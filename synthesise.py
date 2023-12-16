@@ -29,13 +29,14 @@ def load_data(audio_dir: str) -> dict:
     # glob wav and flac
     for wav_name in path.glob("*.wav"):
         wav, sr = torchaudio.load(wav_name)
-        wav = ASV_Dataset.prepare_wav(wav, sr)
+        # wav = ASV_Dataset.prepare_wav(wav.reshape(1, -1), sr)
         wavs.append(wav)
         fnames.append(wav_name.name)
         sample_rates.append(sr)
+
     for flac_name in path.glob("*.flac"):
         wav, sr = torchaudio.load(flac_name)
-        wav = ASV_Dataset.prepare_wav(wav, sr)
+        # wav = ASV_Dataset.prepare_wav(wav.reshape(1, -1), sr)
         wavs.append(wav)
         fnames.append(flac_name.name)
         sample_rates.append(sr)
@@ -43,13 +44,15 @@ def load_data(audio_dir: str) -> dict:
 
 
 def load_checkpoint(model: RawNet, c_path: str):
-    state_dict = load_file(c_path, device="cuda")
+    # state_dict = load_file(c_path, device="cuda")
+    state_dict = torch.load(c_path, map_location='cuda:0')
     model.load_state_dict(state_dict)
     model.eval()
 
 
 def get_checkpoint_fnames(c_dir: Path):
-    return list(c_dir.rglob("*.safetensors"))
+    # return list(c_dir.rglob("*.safetensors"))
+    return list(c_dir.rglob("*.pth"))
 
 
 @hydra.main(config_path="config", config_name="config")
@@ -87,7 +90,7 @@ def main(config: DictConfig):
                 records.append(
                     {
                         "fname": data["fname"][i],
-                        "audio": wandb.Audio(wav.cpu().numpy(), sample_rate=sr),
+                        "audio": wandb.Audio(wav.cpu().reshape(-1,).numpy(), sample_rate=ASV_Dataset.SR),
                         "bonafide_prob": prob,
                     }
                 )

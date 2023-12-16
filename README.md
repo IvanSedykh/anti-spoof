@@ -1,9 +1,6 @@
-# Text 2 Speech 2 - Vocoder (HiFi-GAN)
+# AntiSpoof - RawNet2
 
 
-Check WANDB report with generated samples [here](https://api.wandb.ai/links/idsedykh/res9n5ln).
-
-MOS score is 5/5.  
 BONUS: implemented Hydra config.
 
 ## Installation guide
@@ -23,15 +20,15 @@ BONUS: implemented Hydra config.
 
 ## Reproduction guide
 
-Download data `bash download_data.sh`
+Download data from [kaggle](https://www.kaggle.com/datasets/awsaf49/asvpoof-2019-dataset).
 
 run `python train.py`
 
-For generation please check [run_synthesis.slurm]() script. Checkpoint may be downloaded [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ) or just use the one in the current repo at path `checkpoints/step-190000`.
+For generation please check [run_synthesis.slurm]() script. Checkpoint may be downloaded [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ) or just use the one in the current repo at path `checkpoints/step-30000`.
 
 something like this should work:
 ```bash
 python synthesise.py \
-    +test_audio_dir=test_data/audios \
+    +test_audio_dir=test_data \
     +checkpoint_dir=$CHECKPOINT_DIR
 ```
